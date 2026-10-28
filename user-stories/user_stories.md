@@ -1,6 +1,6 @@
 # Historias de Usuario - Consultora Tech Solutions
 
-Documento consolidado a partir del tablero Trello del equipo.
+Documento consolidado en base al tablero Trello del equipo.
 
 ## Historias de Usuario
 
