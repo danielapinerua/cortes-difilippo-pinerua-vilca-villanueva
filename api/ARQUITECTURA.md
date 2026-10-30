@@ -50,23 +50,26 @@ api/
 │   ├── db.py                  Conexión a MySQL: una por pedido, commit/rollback automático
 │   ├── errors.py              Errores propios + formato único de respuesta de error
 │   ├── security.py            Contraseñas, token de sesión y decoradores de permisos
+│   ├── validators.py          Validaciones del alta de cliente (US17)
 │   ├── api/                   CAPA DE RUTAS
 │   │   ├── __init__.py        Blueprint /api/v1 y registro de recursos
 │   │   ├── _helpers.py        json_body() y otras utilidades de rutas
 │   │   ├── health.py          GET /api/v1/health
-│   │   ├── auth.py            POST /auth/login · GET /auth/me          (US16)
+│   │   ├── auth.py            POST /auth/login · POST /auth/register · GET /auth/me   (US16/US17)
 │   │   └── plans.py           CRUD de planes (ejemplo de referencia)   (US07)
 │   ├── services/              CAPA DE NEGOCIO
 │   │   ├── auth_service.py
 │   │   └── plans_service.py
 │   └── repositories/          CAPA DE DATOS (SQL)
 │       ├── users_repository.py
+│       ├── clients_repository.py
 │       └── plans_repository.py
 ├── scripts/
 │   └── create_user.py         Crea un admin o cliente de prueba (la tabla users arranca vacía)
 └── tests/
     ├── conftest.py            Repositorios falsos en memoria + logins de prueba
     ├── test_auth.py
+    ├── test_register.py
     └── test_plans.py
 ```
 
@@ -166,6 +169,7 @@ Estado: ✅ hecho · 🔲 pendiente · ❓ requiere decisión (sección 8). Las 
 | US | Historia | Endpoint | Rol | Estado |
 |---|---|---|---|---|
 | US16 | Iniciar sesión | `POST /auth/login`, `GET /auth/me` | público / logueado | ✅ backend (falta pantalla) |
+| US17 | Registrar un nuevo usuario | `POST /auth/register` · body `{name, email, password, password_confirm, phone?, dni?}` · asigna el plan Gratuito (id 4) · no devuelve token | público | ✅ backend (falta pantalla) |
 | US01 | Consultar servicios contratados | `GET /me/services` | client | 🔲 |
 | US02 | Solicitar modificación de servicio | `POST /service-requests` · body `{service_id, modification_type, description?}` · el `client_id` sale del token | client | 🔲 |
 | US14 | Consultar solicitudes y estados | `GET /service-requests?status_id=` (bandeja del admin) · `GET /me/service-requests` (las del cliente, cubre US05) | admin / client | 🔲 |
@@ -180,7 +184,6 @@ Reglas de US09 para el Sprint 1 (según `base_datos.md` 5.1): solo se atiende un
 | US07 | Gestionar planes | `/plans` CRUD | ✅ (ejemplo de referencia) |
 | US06 | Gestionar clientes | `/clients` CRUD | 🔲 |
 | US08 | Gestionar servicios | `/services` CRUD | 🔲 |
-| US17 | Registrar un nuevo usuario | `POST /auth/register` | ❓ ver 8.2-a |
 | US03 | Adjuntar documentación | `POST /service-requests/{id}/attachments` | ❓ ver 8.2-d |
 | US04 | Realizar un reclamo | `POST /claims` | 🔲 |
 | US13 | Solicitar cambio de plan | `POST /plan-change-requests` | 🔲 |
@@ -219,12 +222,18 @@ python -m scripts.create_user --email admin@techsolutions.com --password MiClave
 python -m scripts.create_user --email cliente@ejemplo.com --password MiClave123 --role client --name "Mariana" --plan-id 1
 ```
 
-**4. Iniciar sesión y consultar** (con Thunder Client, Postman, o curl):
+**4. Crear una cuenta desde la API (US17)**
+```bash
+curl -X POST localhost:5000/api/v1/auth/register -H "Content-Type: application/json" -d '{"name":"Mariana Diaz","email":"mariana@ejemplo.com","password":"ClaveSegura123","password_confirm":"ClaveSegura123","phone":"+5491122223333","dni":"28456321"}'
+```
+Responde `201` con el usuario, el cliente y su plan (Gratuito). No devuelve token: hay que iniciar sesión.
+
+**5. Iniciar sesión y consultar** (con Thunder Client, Postman, o curl):
 ```bash
 curl -X POST localhost:5000/api/v1/auth/login -H "Content-Type: application/json" -d '{"email":"admin@techsolutions.com","password":"MiClave123"}'
 curl localhost:5000/api/v1/plans -H "Authorization: Bearer <el token que devolvió el login>"
 ```
-Debería devolver los 3 planes cargados por el script (Básico, Profesional, Premium).
+Debería devolver los 4 planes cargados por el script (Básico, Profesional, Premium y Gratuito).
 
 **Tests automáticos** (no necesitan MySQL):
 ```bash
@@ -232,7 +241,7 @@ python -m pytest
 ```
 Funcionan porque `tests/conftest.py` reemplaza los repositorios por versiones en memoria. Es la ventaja concreta de separar en capas.
 
-> **Qué está verificado y qué no:** los tests prueban rutas, validaciones, permisos y errores con repositorios falsos. Además, todas las consultas SQL del código se contrastaron contra los `CREATE TABLE` reales del script (tablas y columnas existen). Lo que **todavía no se corrió es la API contra un MySQL real**: el primer arranque con base de verdad es el punto 4 de arriba.
+> **Qué está verificado:** 68 tests automáticos con repositorios en memoria. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos).
 
 ## 8. Decisiones y puntos abiertos
 
@@ -249,12 +258,13 @@ Funcionan porque `tests/conftest.py` reemplaza los repositorios por versiones en
 
 ### 8.2 Pendientes que afectan a la API
 
-a. **`clients.plan_id` es `NOT NULL`** → un visitante no puede registrarse sin plan (US17). Opciones: asignar un plan por defecto al registrarse, o permitir `NULL`. (Ya figura como pendiente en `base_datos.md`.)
+a. **`clients.plan_id` es `NOT NULL`** → resuelto con el plan **Gratuito (id 4)**, que el script SQL carga con precio `0.00`. Al registrarse, el cliente nace con ese plan y sin servicios contratados. La constante vive en `constants.py` (`DEFAULT_PLAN_ID`).
 b. **US15 (sistema externo)** no tiene tabla de credenciales. Opción simple: una API key fija en `.env` que el sistema externo manda en un header.
 c. **Idioma de los estados:** `request_statuses` está en español y `claims.status`/`category` en inglés. El frontend va a recibir ambos; hay que unificar o mapear.
 d. **Archivos adjuntos (US03):** el script guarda la ruta, pero falta decidir dónde se guardan los archivos (carpeta `uploads/` fuera de git), formatos y tamaño máximo.
 e. **`invoices` vs. el parcial:** el parcial dice que la factura no se persiste y la tabla existe. Decidir una versión (ya figura en `base_datos.md`).
 f. **Dónde vive la API en el repo:** esta carpeta se pensó como `api/`. El `app.py` de demo de la raíz se puede borrar cuando se integre.
+g. **Verificación de email:** `users` no tiene columna para eso, así que la cuenta queda activa apenas se registra. Si se quiere exigir confirmación, hay que agregar `email_verified_at` al script.
 
 ### 8.3 Decisiones tomadas en la API
 
@@ -265,6 +275,9 @@ f. **Dónde vive la API en el repo:** esta carpeta se pensó como `api/`. El `ap
 | Token firmado (`itsdangerous`) en el header `Authorization` | Funciona con el frontend en otro origen, sin sumar dependencias |
 | URLs y JSON en inglés, igual que las columnas | Un solo nombre para cada cosa en SQL, API y frontend |
 | IDs de catálogo como constantes en `constants.py` | La base los fija; el código no consulta la tabla para saber qué es "pendiente" |
+| Plan Gratuito (id 4) por defecto al registrarse | `clients.plan_id` es `NOT NULL`; el visitante arranca con un plan real, sin servicios y sin facturación |
+| El registro no devuelve token | Se obliga a pasar por el login: una sola forma de iniciar sesión y menos código duplicado |
+| `db.transaction()` para flujos de varios `INSERT` | El commit del teardown también corre cuando un errorhandler atrapa la excepción; sin rollback explícito quedarían filas a medias |
 
 ## 9. Registro de cambios
 
@@ -272,3 +285,4 @@ f. **Dónde vive la API en el repo:** esta carpeta se pensó como `api/`. El `ap
 |---|---|
 | 2026-10-29 | Estructura base en 3 capas, manejo de errores, conexión MySQL, CORS, recurso de ejemplo con tests. |
 | 2026-10-29 | Adaptado al script SQL real (tablas en inglés). Autenticación: login, token firmado, roles, `create_user`. Mapa de endpoints ordenado por Sprint 1. 26 tests. |
+| 2026-10-29 | US17 implementada: `POST /auth/register` con validaciones, plan Gratuito por defecto y transacción explícita. 68 tests. |

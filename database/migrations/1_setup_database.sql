@@ -397,10 +397,14 @@ INSERT INTO services (name, description) VALUES
 
 -- Plans are required before any client can be created: clients.plan_id is
 -- NOT NULL. Prices follow the billing example of the case study.
-INSERT INTO plans (name, description, price) VALUES
-  ('Básico',      'Atención estándar, 1 servicio activo',     3500.00),
-  ('Profesional', 'Atención prioritaria, hasta 3 servicios',  5900.00),
-  ('Premium',     'Atención inmediata, servicios ilimitados', 7900.00);
+-- IDs are explicit because the API uses DEFAULT_PLAN_ID = 4 (see
+-- api/app/constants.py): the free plan a visitor gets on self-registration
+-- (US17). Changing these IDs means changing that constant too.
+INSERT INTO plans (id, name, description, price) VALUES
+  (1, 'Básico',      'Atención estándar, 1 servicio activo',     3500.00),
+  (2, 'Profesional', 'Atención prioritaria, hasta 3 servicios',  5900.00),
+  (3, 'Premium',     'Atención inmediata, servicios ilimitados', 7900.00),
+  (4, 'Gratuito',    'Plan de bienvenida: acceso al sistema y al catálogo', 0.00);
 
 -- ---------------------------------------------------------------------
 -- Sanity check: expected row counts after a clean run.

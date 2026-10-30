@@ -8,6 +8,8 @@ Patrón: UNA conexión por pedido HTTP.
 
 Así, si un endpoint hace 3 INSERT y el tercero falla, no queda nada a medias.
 """
+from contextlib import contextmanager
+
 import pymysql
 from pymysql.cursors import DictCursor
 from flask import current_app, g
@@ -40,6 +42,31 @@ def close_db(exception=None):
             db.rollback()
     finally:
         db.close()
+
+
+@contextmanager
+def transaction():
+    """Agrupa varias escrituras en una sola transacción.
+
+    Uso:
+        with db.transaction():
+            repo_a.create(...)
+            repo_b.create(...)
+
+    Si algo falla, se deshace TODO lo escrito hasta ahí.
+
+    ¿Por qué no alcanza con el commit/rollback de close_db()? Porque cuando un
+    errorhandler de Flask atrapa la excepción, Flask llama al teardown con
+    `None` y close_db() haría commit igual: un flujo de dos INSERT podría
+    dejar la primera fila guardada y la segunda no. Este context manager
+    revierte explícitamente antes de que el error siga viaje.
+    """
+    try:
+        yield
+    except Exception:
+        if "db" in g:
+            g.db.rollback()
+        raise
 
 
 def init_app(app):

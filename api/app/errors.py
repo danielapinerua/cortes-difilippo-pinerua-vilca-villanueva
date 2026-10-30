@@ -54,11 +54,39 @@ class ConflictError(ApiError):
     code = "conflict"
 
 
+class DuplicateError(ConflictError):
+    """El valor ya existe y una restricción UNIQUE lo impide (HTTP 409)."""
+    code = "duplicate_entry"
+
+
+class InvalidReferenceError(ConflictError):
+    """Se referencia un registro que no existe (HTTP 409)."""
+    code = "invalid_reference"
+
+
 def _error_response(status, code, message, details=None):
     body = {"error": {"code": code, "message": message}}
     if details:
         body["error"]["details"] = details
     return jsonify(body), status
+
+
+# Cuando MySQL rechaza un duplicado (error 1062) informa qué índice UNIQUE
+# falló. Esto traduce ese índice al campo del formulario que hay que marcar.
+_DUPLICATE_FIELDS = {
+    "uq_users_email": ("email", "Ya existe una cuenta con ese email."),
+    "uq_clients_email": ("email", "Ya existe una cuenta con ese email."),
+    "uq_clients_dni": ("dni", "Ya existe una cuenta con ese DNI."),
+    "uq_plans_name": ("name", "Ya existe un plan con ese nombre."),
+}
+
+
+def _duplicate_response(err):
+    detail = " ".join(str(arg) for arg in err.args)
+    for constraint, (field, message) in _DUPLICATE_FIELDS.items():
+        if constraint in detail:
+            return _error_response(409, "duplicate_entry", message, details={field: "Ya existe."})
+    return _error_response(409, "duplicate_entry", "Ya existe un registro con ese valor.")
 
 
 def register_error_handlers(app):
@@ -71,7 +99,7 @@ def register_error_handlers(app):
         # MySQL avisa qué restricción falló con un número en args[0].
         mysql_code = err.args[0] if err.args else None
         if mysql_code == 1062:  # UNIQUE: ej. un plan con nombre repetido, un email ya registrado
-            return _error_response(409, "duplicate_entry", "Ya existe un registro con ese valor.")
+            return _duplicate_response(err)
         if mysql_code == 1451:  # FK al borrar/modificar: ej. borrar un plan que tiene clientes
             return _error_response(409, "in_use", "No se puede completar: hay otros registros que dependen de este.")
         if mysql_code == 1452:  # FK al insertar: ej. un service_id que no existe

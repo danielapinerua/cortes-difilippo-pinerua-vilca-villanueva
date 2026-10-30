@@ -12,6 +12,14 @@ Regla: en el código comparar por ID (STATUS_PENDING), nunca por nombre
 ROLE_CLIENT = "client"
 ROLE_ADMIN = "admin"
 
+# plans.id — plan que recibe un visitante al registrarse (US17).
+# Debe coincidir con el plan "Gratuito" del script SQL.
+DEFAULT_PLAN_ID = 4
+
+# users.password_hash — política de contraseñas (US17).
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 128
+
 # request_statuses.id
 STATUS_PENDING = 1      # pendiente
 STATUS_IN_REVIEW = 2    # en_revision

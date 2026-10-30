@@ -94,7 +94,7 @@ erDiagram
 | # | Tabla | Qué guarda | RF / US |
 |---|---|---|---|
 | 1 | `users` | Credenciales y rol de quien inicia sesión | US16, US17 |
-| 2 | `plans` | Catálogo de planes (Básico, Profesional, Premium) | RF-06, US07 |
+| 2 | `plans` | Catálogo de planes (Básico, Profesional, Premium, Gratuito) | RF-06, US07 |
 | 3 | `services` | Catálogo de servicios de consultoría | RF-06, US08 |
 | 4 | `request_statuses` | Catálogo de estados de una solicitud | RF-10 |
 | 5 | `priorities` | Catálogo de prioridades (alta, media, baja) | RF-07 |
@@ -178,7 +178,7 @@ RF-06, US07 (gestión), US13/US19 (cambio de plan), Reporte 1.
 | Campo | Tipo | Nulo | Default | Para qué |
 |---|---|---|---|---|
 | `id` | `INT UNSIGNED` | No | `AUTO_INCREMENT` | Identificador del plan |
-| `name` | `VARCHAR(100)` | No | — | Nombre comercial: Básico, Profesional, Premium |
+| `name` | `VARCHAR(100)` | No | — | Nombre comercial: Básico, Profesional, Premium, Gratuito |
 | `description` | `VARCHAR(500)` | Sí | `NULL` | Texto para mostrar en la pantalla de planes |
 | `price` | `DECIMAL(12,2)` | No | — | Precio mensual. Se usa para facturar |
 | `created_at` | `DATETIME` | No | `CURRENT_TIMESTAMP` | Alta del plan |
@@ -201,6 +201,7 @@ RF-06, US07 (gestión), US13/US19 (cambio de plan), Reporte 1.
 
 - Un plan **no se puede borrar** si algún cliente lo tiene asignado (`ON DELETE RESTRICT`).
 - `DECIMAL(12,2)` evita los errores de redondeo de `FLOAT` en dinero.
+- El plan **Gratuito (id 4)** es el que recibe un visitante al registrarse (US17). La API lo referencia con `DEFAULT_PLAN_ID` en `api/app/constants.py`.
 
 **Ejemplo de fila**
 
@@ -209,6 +210,7 @@ RF-06, US07 (gestión), US13/US19 (cambio de plan), Reporte 1.
 | 1 | Básico | Atención estándar, 1 servicio activo | 3500.00 |
 | 2 | Profesional | Atención prioritaria, hasta 3 servicios | 5900.00 |
 | 3 | Premium | Atención inmediata, servicios ilimitados | 7900.00 |
+| 4 | Gratuito | Plan de bienvenida: acceso al sistema y al catálogo | 0.00 |
 
 ---
 
@@ -394,6 +396,7 @@ RF-05, US06 (gestión), US01, US17 (registro), Reportes 1 y 5.
 **Reglas de negocio**
 
 - `plan_id` es obligatorio: **todo cliente tiene un plan**.
+- Al registrarse desde el sistema, el cliente nace con el plan **Gratuito (id 4)** y **sin servicios contratados** (`client_services` vacío).
 - El DNI se guarda **solo con dígitos** (`28456321`), sin puntos.
 - `clients.email` es el email de contacto; `users.email` es el de login. Pueden coincidir, pero no son lo mismo.
 
@@ -880,7 +883,7 @@ El script carga estos datos fijos. **No son datos de prueba**: son catálogos qu
 | `request_statuses` | 5 | pendiente, en_revision, aprobado, rechazado, realizado |
 | `priorities` | 3 | alta, media, baja |
 | `services` | 8 | Catálogo del caso de estudio |
-| `plans` | 3 | Básico (3500), Profesional (5900), Premium (7900) |
+| `plans` | 4 | Básico (3500), Profesional (5900), Premium (7900), Gratuito (0) |
 
 > **Importante:** `plans` no es opcional. `clients.plan_id` es `NOT NULL`, así que sin planes no se puede crear ningún cliente.
 
@@ -1002,6 +1005,7 @@ SELECT
 | IDs de catálogos fijos | La aplicación puede usar constantes (`PENDIENTE = 1`, `REALIZADO = 5`) sin consultar la tabla |
 | `notifications` minimalista | Solo bandeja interna. La traza de envío va a `integration_audit_logs` |
 | `BIGINT` en logs y notificaciones | Crecen mucho más rápido que las tablas de negocio |
+| Plan Gratuito (id 4) | Permite registrar visitantes sin violar `clients.plan_id NOT NULL`; es gratis, así que no genera factura |
 
 ### 8.2 Pendientes
 
@@ -1009,7 +1013,10 @@ SELECT
 |---|---|
 | `invoices` vs. el parcial | ⚠️ El parcial dice que la factura no se persiste; la tabla existe. Decidir una versión |
 | Campos del Reporte 1 | ⚠️ Faltan `plans.status`, `plans.credits`, `plans.response_time`, `clients.plan_started_at` |
-| `clients.plan_id NOT NULL` | ⚠️ Impide el registro de un visitante sin plan (US17) |
+| `clients.plan_id NOT NULL` | ✅ Resuelto: al registrarse se asigna el plan Gratuito (id 4), sin servicios |
+| Verificación de email | ⚠️ No hay columna: la cuenta queda activa apenas se registra |
+| Usuario recién registrado sin servicios | ⚠️ No existe flujo de contratación; el admin carga `client_services` |
+| Plan Gratuito | ⚠️ Decisión de producto: no está en el caso de estudio, se agregó para cumplir `plan_id NOT NULL` |
 | `claims` en inglés | ⚠️ `category` y `status` usan `ENUM` en inglés, distinto del resto |
 | Autorización de API externa | ⚠️ No hay tabla de credenciales para US15 |
 | Identidad en reclamos | ⚠️ `identity_verified` solo existe en `plan_change_requests` (US18) |
