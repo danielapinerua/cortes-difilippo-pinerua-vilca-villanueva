@@ -1,7 +1,8 @@
 """Capa de negocio para solicitudes de servicios."""
 
-from ..errors import NotFoundError, ValidationError
-from ..repositories import clients_repository, service_requests_repository
+from ..constants import STATUS_COMPLETED, STATUS_PENDING, STATUS_REJECTED
+from ..errors import ConflictError, NotFoundError, ValidationError
+from ..repositories import administrators_repository, clients_repository, service_requests_repository
 
 def create_service_request(user_id, service_id, modification_type, description=None):
     """Crea una solicitud de modificación para un servicio contratado."""
@@ -35,6 +36,61 @@ def create_service_request(user_id, service_id, modification_type, description=N
         client_id, service_id, modification_type, description
     )
 
+    return service_requests_repository.get_by_id(request_id)
+
+
+def attend_service_request(admin_user_id, request_id, decision, rejection_reason=None):
+    """Atiende una solicitud: aprueba (-> realizado) o rechaza (con motivo)."""
+
+    # 1. Validar la decisión: solo "approve" o "reject".
+    if decision not in ("approve", "reject"):
+        raise ValidationError(
+            "La decisión debe ser 'approve' o 'reject'.",
+            details={"decision": "Debe ser 'approve' o 'reject'."},
+        )
+
+    # 2. Si se rechaza, el motivo es obligatorio.
+    reason = None
+    if decision == "reject":
+        reason = rejection_reason.strip() if isinstance(rejection_reason, str) else ""
+        if not reason:
+            raise ValidationError(
+                "El motivo del rechazo es obligatorio.",
+                details={"rejection_reason": "El motivo del rechazo es obligatorio."},
+            )
+        if len(reason) > 500:
+            raise ValidationError(
+                "El motivo del rechazo no puede superar los 500 caracteres.",
+                details={"rejection_reason": "El motivo del rechazo no puede superar los 500 caracteres."},
+            )
+
+    # 3. Buscar la solicitud.
+    request = service_requests_repository.get_by_id(request_id)
+    if request is None:
+        raise NotFoundError("La solicitud no existe.")
+
+    # 5. Solo se atiende una solicitud en estado pendiente.
+    if request["status_id"] != STATUS_PENDING:
+        raise ConflictError("La solicitud ya no está pendiente.")
+
+    # 6-7. Buscar el administrador que atiende.
+    administrator = administrators_repository.get_by_user_id(admin_user_id)
+    if administrator is None:
+        raise NotFoundError("No existe el perfil de administrador.")
+
+    # 8. Definir el estado de salida.
+    status_id = STATUS_COMPLETED if decision == "approve" else STATUS_REJECTED
+
+    # 9. Actualizar la solicitud.
+    rows = service_requests_repository.update_resolution(
+        request_id, status_id, administrator["id"], reason
+    )
+
+    # 10. Si no se actualizó, la solicitud ya no estaba pendiente.
+    if rows == 0:
+        raise ConflictError("La solicitud ya no está pendiente.")
+
+    # 11. Devolver la solicitud actualizada.
     return service_requests_repository.get_by_id(request_id)
 
     

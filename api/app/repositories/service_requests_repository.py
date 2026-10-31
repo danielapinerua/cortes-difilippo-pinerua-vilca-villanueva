@@ -1,5 +1,6 @@
 """Capa de acceso a datos para solicitudes de servicios."""
 
+from ..constants import STATUS_PENDING
 from ..db import get_db
 
 SELECT_COLUMNS = """
@@ -43,4 +44,22 @@ def is_contracted_by_client(client_id, service_id):
             (client_id, service_id),
         )
         return cur.fetchone() is not None
+
+
+def update_resolution(request_id, status_id, administrator_id, rejection_reason):
+    """Marca la solicitud como resuelta (aprobar -> STATUS_COMPLETED,
+    rechazar -> STATUS_REJECTED). Solo actualiza si sigue pendiente."""
+    with get_db().cursor() as cur:
+        cur.execute(
+            """
+            UPDATE service_requests
+            SET status_id = %s,
+                administrator_id = %s,
+                rejection_reason = %s,
+                resolved_at = NOW()
+            WHERE id = %s AND status_id = %s
+            """,
+            (status_id, administrator_id, rejection_reason, request_id, STATUS_PENDING),
+        )
+        return cur.rowcount
     
