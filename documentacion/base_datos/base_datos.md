@@ -399,6 +399,9 @@ RF-05, US06 (gestión), US01, US17 (registro), Reportes 1 y 5.
 - Al registrarse desde el sistema, el cliente nace con el plan **Gratuito (id 4)** y **sin servicios contratados** (`client_services` vacío).
 - El DNI se guarda **solo con dígitos** (`28456321`), sin puntos.
 - `clients.email` es el email de contacto; `users.email` es el de login. Pueden coincidir, pero no son lo mismo.
+- **Gestión por administrador (US06):** el admin da de alta y modifica perfiles desde `/clients`. El alta **no crea credenciales**: `user_id` queda en `NULL` (cliente sin acceso al sistema) salvo que el email ya pertenezca a un usuario con rol `client` que todavía no tenga perfil; en ese caso se vincula automáticamente. Para que un cliente sin login pueda entrar, primero se crea la cuenta (US17 o `create_user.py`) y después se vincula.
+- Un cliente recién creado por US06 **tampoco tiene servicios contratados**: para que pueda usar `GET /me/services` o `POST /me/service-requests` hay que cargar filas en `client_services`.
+- El cambio de plan desde US06 es una **corrección administrativa**. El cambio *solicitado por el cliente* va por el flujo de US13/US19 (`plan_change_requests`).
 
 **Ejemplo de fila**
 

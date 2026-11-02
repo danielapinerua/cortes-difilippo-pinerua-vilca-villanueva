@@ -77,6 +77,7 @@ _DUPLICATE_FIELDS = {
     "uq_users_email": ("email", "Ya existe una cuenta con ese email."),
     "uq_clients_email": ("email", "Ya existe una cuenta con ese email."),
     "uq_clients_dni": ("dni", "Ya existe una cuenta con ese DNI."),
+    "uq_clients_user_id": ("user_id", "Ese usuario ya tiene un perfil de cliente."),
     "uq_plans_name": ("name", "Ya existe un plan con ese nombre."),
 }
 

@@ -50,19 +50,21 @@ api/
 │   ├── db.py                  Conexión a MySQL: una por pedido, commit/rollback automático
 │   ├── errors.py              Errores propios + formato único de respuesta de error
 │   ├── security.py            Contraseñas, token de sesión y decoradores de permisos
-│   ├── validators.py          Validaciones del alta de cliente (US17)
+│   ├── validators.py          Validaciones de registro (US17) y de clientes (US06)
 │   ├── api/                   CAPA DE RUTAS
 │   │   ├── __init__.py        Blueprint /api/v1 y registro de recursos
 │   │   ├── _helpers.py        json_body() e int_query_args() (filtros numéricos de la URL)
 │   │   ├── health.py          GET /api/v1/health
 │   │   ├── auth.py            POST /auth/login · POST /auth/register · GET /auth/me   (US16/US17)
 │   │   ├── plans.py           CRUD de planes (ejemplo de referencia)   (US07)
+│   │   ├── clients.py         GET/POST /clients, GET/PUT /clients/{id}  (US06)
 │   │   ├── services.py        GET /me/services                         (US01)
 │   │   ├── service_requests.py        POST y GET /me/service-requests  (US02, US14/US05)
 │   │   └── service_requests_admin.py  GET /service-requests, GET /service-requests/{id}, PUT .../resolution  (US14, US09)
 │   ├── services/              CAPA DE NEGOCIO
 │   │   ├── auth_service.py
 │   │   ├── plans_service.py
+│   │   ├── clients_service.py
 │   │   ├── services_service.py
 │   │   └── service_requests_service.py
 │   └── repositories/          CAPA DE DATOS (SQL)
@@ -80,6 +82,7 @@ api/
     ├── test_register.py
     ├── test_plans.py
     ├── test_services.py
+    ├── test_clients.py                  (US06)
     ├── test_service_requests_admin.py   (US09)
     └── test_service_requests_list.py    (US14/US05)
 ```
@@ -197,12 +200,22 @@ Reglas de US14 y US05:
 - **Lista vacía es válida** (`200 []`): el cliente puede no haber pedido nada todavía. Un usuario cliente sin perfil en `clients` → `404`.
 - El detalle `GET /service-requests/{id}` es solo para administradores (`404` si no existe).
 
+Reglas de US06 (gestión de clientes):
+- **Solo administradores.** El CU5 es backoffice: sin token → `401`, rol `client` → `403`.
+- **`POST` crea el perfil, no credenciales.** El cuerpo es `{name, email, phone?, dni?, plan_id}`; no se pide contraseña (eso es US17). `plan_id` es obligatorio y debe existir en `plans`.
+- **Si el email ya es una cuenta de cliente sin perfil**, se vincula automáticamente (`clients.user_id`). Si esa cuenta ya tiene perfil, o es de un administrador, → `409`. Así el email no queda ocupado sin salida.
+- **`PUT` es parcial:** solo se actualizan los campos enviados. `phone: null` / `dni: null` limpian el valor; un cuerpo vacío devuelve el cliente sin cambios. Cambiar `plan_id` está permitido (corrección administrativa; el cambio *solicitado* por el cliente es US13/US19).
+- **Duplicados:** email y DNI dentro de `clients` → `409`. El `UNIQUE` de MySQL queda como red de seguridad (`1062`).
+- **Respuesta plana**, igual que US14: `plan_id`, `plan_name`, `plan_price` y `has_login` (no se expone el `user_id` interno).
+- **Listado** con `?search=` (nombre, email o DNI) y `?plan_id=`, ordenado por nombre. Sin paginación por ahora.
+- **No hay `DELETE`**: el CU5 no lo pide y las FK `RESTRICT` lo impedirían con datos asociados.
+
 ### Después del Sprint 1
 
 | US | Historia | Endpoint propuesto | Estado |
 |---|---|---|---|
 | US07 | Gestionar planes | `/plans` CRUD | ✅ (ejemplo de referencia) |
-| US06 | Gestionar clientes | `/clients` CRUD | 🔲 |
+| US06 | Gestionar clientes | `GET/POST /clients` · `GET/PUT /clients/{id}` · filtros `?search=&plan_id=` | ✅ backend |
 | US08 | Gestionar servicios | `/services` CRUD | 🔲 |
 | US03 | Adjuntar documentación | `POST /service-requests/{id}/attachments` | ❓ ver 8.2-d |
 | US04 | Realizar un reclamo | `POST /claims` | 🔲 |
@@ -261,7 +274,7 @@ python -m pytest
 ```
 Funcionan porque `tests/conftest.py` reemplaza los repositorios por versiones en memoria. Es la ventaja concreta de separar en capas.
 
-> **Qué está verificado:** 114 tests automáticos con repositorios en memoria. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos). El SQL de la bandeja (US14/US05) se contrastó con los `CREATE TABLE` reales y se ejecutó sobre datos de prueba en SQLite (orden, filtros y `LEFT JOIN`); **todavía no se corrió contra el MySQL real**.
+> **Qué está verificado:** 156 tests automáticos con repositorios en memoria. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos). La gestión de clientes (US06) también se corrió contra el MySQL real: alta `201`, listado y búsqueda `200`, modificación parcial con cambio de plan `200`, validaciones `422`, duplicados `409`, cliente sin permisos `403`, y limpieza posterior de los datos de prueba. El SQL de la bandeja (US14/US05) se contrastó con los `CREATE TABLE` reales y se ejecutó sobre datos de prueba en SQLite (orden, filtros y `LEFT JOIN`); **todavía no se corrió contra el MySQL real**.
 
 ## 8. Decisiones y puntos abiertos
 
@@ -307,3 +320,4 @@ g. **Verificación de email:** `users` no tiene columna para eso, así que la cu
 | 2026-10-29 | Adaptado al script SQL real (tablas en inglés). Autenticación: login, token firmado, roles, `create_user`. Mapa de endpoints ordenado por Sprint 1. 26 tests. |
 | 2026-10-29 | US17 implementada: `POST /auth/register` con validaciones, plan Gratuito por defecto y transacción explícita. 68 tests. |
 | 2026-11-02 | US14 y US05: bandeja del administrador con filtros y orden por prioridad, detalle, y `GET /me/service-requests` para el cliente. Mapa del Sprint 1 al día con lo implementado (US01, US02, US09). 114 tests. |
+| 2026-11-02 | US06: gestión de clientes con listado y búsqueda, alta, detalle y modificación parcial; validación por campo, duplicados y vínculo automático con cuentas de cliente. 156 tests. |

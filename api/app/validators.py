@@ -1,4 +1,4 @@
-"""Validaciones del alta de un cliente (US17 - Registro).
+"""Validaciones de registro (US17) y de gestión de clientes (US06).
 
 Son funciones puras: reciben lo que mandó el visitante y devuelven el valor
 limpio o un mensaje de error. No tocan la base ni HTTP, así se prueban solas.
@@ -59,6 +59,55 @@ def validate_registration(data):
     clean["dni"] = _dni(data.get("dni"), errors)
 
     return clean, errors
+
+
+def validate_client(data, partial=False):
+    """US06: valida el alta (`partial=False`) o la modificación de un cliente.
+
+    Devuelve `(valores_limpios, errores)`. A diferencia del registro, no pide
+    contraseña: US06 administra el perfil, no las credenciales de acceso.
+
+    En una modificación parcial solo se validan los campos que vienen en el
+    cuerpo. Para `phone` y `dni`, enviar `null` (o `""`) significa "limpiar el
+    valor": por eso se distinguen "clave ausente" de "clave con null".
+    """
+    errors = {}
+    clean = {}
+
+    if not partial or "name" in data:
+        name = _name(data.get("name"), errors)
+        if name is not None:
+            clean["name"] = name
+
+    if not partial or "email" in data:
+        email = _email(data.get("email"), errors)
+        if email is not None:
+            clean["email"] = email
+
+    for field, validator in (("phone", _phone), ("dni", _dni)):
+        if field in data:
+            value = validator(data.get(field), errors)
+            if field not in errors:
+                clean[field] = value  # None cuando el valor se limpia
+
+    if not partial or "plan_id" in data:
+        plan_id = _positive_int(data.get("plan_id"), "plan_id", errors, required=True)
+        if plan_id is not None:
+            clean["plan_id"] = plan_id
+
+    return clean, errors
+
+
+def _positive_int(value, field, errors, required):
+    """Entero mayor a 0. Rechaza bool y strings ("2" no es un id válido)."""
+    if value is None:
+        if required:
+            errors[field] = "Es obligatorio."
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        errors[field] = "Debe ser un número entero mayor a 0."
+        return None
+    return value
 
 
 # ---- Campos ----------------------------------------------------------------
