@@ -93,4 +93,33 @@ def attend_service_request(admin_user_id, request_id, decision, rejection_reason
     # 11. Devolver la solicitud actualizada.
     return service_requests_repository.get_by_id(request_id)
 
-    
+
+
+# ---- Consulta de solicitudes (US14 / US05) -----------------------------------
+
+def list_service_requests(client_id=None, status_id=None, priority_id=None):
+    """Bandeja del administrador: todas las solicitudes, con filtros opcionales."""
+    return service_requests_repository.search(
+        client_id=client_id, status_id=status_id, priority_id=priority_id
+    )
+
+
+def get_service_request(request_id):
+    """Detalle de una solicitud (administrador)."""
+    row = service_requests_repository.get_detail(request_id)
+    if row is None:
+        raise NotFoundError("La solicitud no existe.")
+    return row
+
+
+def list_my_service_requests(user_id, status_id=None):
+    """Solicitudes del cliente logueado (US05: ahí ve el estado de cada una).
+
+    El client_id se resuelve desde el usuario del token. Nunca se acepta uno
+    que venga en la URL: así un cliente solo puede ver SUS solicitudes.
+    Una lista vacía es una respuesta válida (todavía no pidió nada).
+    """
+    client_id = clients_repository.get_client_id_by_user_id(user_id)
+    if client_id is None:
+        raise NotFoundError("No existe el perfil de cliente.")
+    return service_requests_repository.search(client_id=client_id, status_id=status_id)

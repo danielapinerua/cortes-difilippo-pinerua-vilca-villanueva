@@ -53,24 +53,35 @@ api/
 │   ├── validators.py          Validaciones del alta de cliente (US17)
 │   ├── api/                   CAPA DE RUTAS
 │   │   ├── __init__.py        Blueprint /api/v1 y registro de recursos
-│   │   ├── _helpers.py        json_body() y otras utilidades de rutas
+│   │   ├── _helpers.py        json_body() e int_query_args() (filtros numéricos de la URL)
 │   │   ├── health.py          GET /api/v1/health
 │   │   ├── auth.py            POST /auth/login · POST /auth/register · GET /auth/me   (US16/US17)
-│   │   └── plans.py           CRUD de planes (ejemplo de referencia)   (US07)
+│   │   ├── plans.py           CRUD de planes (ejemplo de referencia)   (US07)
+│   │   ├── services.py        GET /me/services                         (US01)
+│   │   ├── service_requests.py        POST y GET /me/service-requests  (US02, US14/US05)
+│   │   └── service_requests_admin.py  GET /service-requests, GET /service-requests/{id}, PUT .../resolution  (US14, US09)
 │   ├── services/              CAPA DE NEGOCIO
 │   │   ├── auth_service.py
-│   │   └── plans_service.py
+│   │   ├── plans_service.py
+│   │   ├── services_service.py
+│   │   └── service_requests_service.py
 │   └── repositories/          CAPA DE DATOS (SQL)
 │       ├── users_repository.py
 │       ├── clients_repository.py
-│       └── plans_repository.py
+│       ├── administrators_repository.py
+│       ├── plans_repository.py
+│       ├── services_repository.py
+│       └── service_requests_repository.py
 ├── scripts/
 │   └── create_user.py         Crea un admin o cliente de prueba (la tabla users arranca vacía)
 └── tests/
     ├── conftest.py            Repositorios falsos en memoria + logins de prueba
     ├── test_auth.py
     ├── test_register.py
-    └── test_plans.py
+    ├── test_plans.py
+    ├── test_services.py
+    ├── test_service_requests_admin.py   (US09)
+    └── test_service_requests_list.py    (US14/US05)
 ```
 
 Convención de nombres: un recurso = tres archivos con el mismo nombre base (`clients.py`, `clients_service.py`, `clients_repository.py`).
@@ -170,12 +181,21 @@ Estado: ✅ hecho · 🔲 pendiente · ❓ requiere decisión (sección 8). Las 
 |---|---|---|---|---|
 | US16 | Iniciar sesión | `POST /auth/login`, `GET /auth/me` | público / logueado | ✅ backend (falta pantalla) |
 | US17 | Registrar un nuevo usuario | `POST /auth/register` · body `{name, email, password, password_confirm, phone?, dni?}` · asigna el plan Gratuito (id 4) · no devuelve token | público | ✅ backend (falta pantalla) |
-| US01 | Consultar servicios contratados | `GET /me/services` | client | 🔲 |
-| US02 | Solicitar modificación de servicio | `POST /service-requests` · body `{service_id, modification_type, description?}` · el `client_id` sale del token | client | 🔲 |
-| US14 | Consultar solicitudes y estados | `GET /service-requests?status_id=` (bandeja del admin) · `GET /me/service-requests` (las del cliente, cubre US05) | admin / client | 🔲 |
-| US09 | Atender solicitud | `PUT /service-requests/{id}/resolution` · body `{decision: "approve"\|"reject", rejection_reason}` | admin | 🔲 |
+| US01 | Consultar servicios contratados | `GET /me/services` | client | ✅ backend |
+| US02 | Solicitar modificación de servicio | `POST /me/service-requests` · body `{service_id, modification_type, description?}` · el `client_id` sale del token | client | ✅ backend (⚠️ sin tests todavía) |
+| US14 | Consultar solicitudes y estados | `GET /service-requests?status_id=&priority_id=&client_id=` (bandeja) · `GET /service-requests/{id}` (detalle) · `GET /me/service-requests?status_id=` (las del cliente) | admin / client | ✅ backend (falta pantalla) |
+| US05 | Consultar estado de una solicitud | Sale del mismo `GET /me/service-requests` de US14: cada solicitud trae `status_id`, `status_name`, `resolved_at` y `rejection_reason` | client | ✅ backend (falta pantalla) |
+| US09 | Atender solicitud | `PUT /service-requests/{id}/resolution` · body `{decision: "approve"\|"reject", rejection_reason}` | admin | ✅ backend (falta pantalla) |
 
 Reglas de US09 para el Sprint 1 (según `base_datos.md` 5.1): solo se atiende una solicitud en estado `pendiente`; aprobar → `realizado` (5); rechazar → `rechazado` (4) y el motivo es obligatorio (422 si falta); se guardan `administrator_id` y `resolved_at`. Atender una que ya no está pendiente → 409.
+
+Reglas de US14 y US05:
+- **Cada solicitud trae datos legibles**, no solo ids: `client_name`, `service_name`, `status_name`, `priority_name` y `priority_level`, además de `modification_type`, `description`, `rejection_reason`, `created_at` y `resolved_at`. Se obtienen con un solo `SELECT` con `JOIN`.
+- **Orden de la bandeja:** primero las más urgentes (`priority_level` 1 = alta), y dentro de cada prioridad las más antiguas primero. Las solicitudes que **todavía no tienen prioridad van al final**. (En MySQL un `NULL` se ordena primero por defecto, por eso el `ORDER BY` lleva `(p.level IS NULL)`; la consulta de ejemplo de `base_datos.md` §7 no lo contempla.)
+- **Filtros opcionales** (se combinan con AND): `status_id`, `priority_id`, `client_id`. Vacío o ausente = sin filtro; si no es un entero positivo → `422` indicando cuál.
+- **Un cliente solo ve lo suyo:** en `/me/service-requests` el `client_id` sale del token. Si el cliente manda `?client_id=` o `?priority_id=` en la URL, se ignoran. Solo acepta `status_id`.
+- **Lista vacía es válida** (`200 []`): el cliente puede no haber pedido nada todavía. Un usuario cliente sin perfil en `clients` → `404`.
+- El detalle `GET /service-requests/{id}` es solo para administradores (`404` si no existe).
 
 ### Después del Sprint 1
 
@@ -241,7 +261,7 @@ python -m pytest
 ```
 Funcionan porque `tests/conftest.py` reemplaza los repositorios por versiones en memoria. Es la ventaja concreta de separar en capas.
 
-> **Qué está verificado:** 68 tests automáticos con repositorios en memoria. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos).
+> **Qué está verificado:** 114 tests automáticos con repositorios en memoria. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos). El SQL de la bandeja (US14/US05) se contrastó con los `CREATE TABLE` reales y se ejecutó sobre datos de prueba en SQLite (orden, filtros y `LEFT JOIN`); **todavía no se corrió contra el MySQL real**.
 
 ## 8. Decisiones y puntos abiertos
 
@@ -286,3 +306,4 @@ g. **Verificación de email:** `users` no tiene columna para eso, así que la cu
 | 2026-10-29 | Estructura base en 3 capas, manejo de errores, conexión MySQL, CORS, recurso de ejemplo con tests. |
 | 2026-10-29 | Adaptado al script SQL real (tablas en inglés). Autenticación: login, token firmado, roles, `create_user`. Mapa de endpoints ordenado por Sprint 1. 26 tests. |
 | 2026-10-29 | US17 implementada: `POST /auth/register` con validaciones, plan Gratuito por defecto y transacción explícita. 68 tests. |
+| 2026-11-02 | US14 y US05: bandeja del administrador con filtros y orden por prioridad, detalle, y `GET /me/service-requests` para el cliente. Mapa del Sprint 1 al día con lo implementado (US01, US02, US09). 114 tests. |
