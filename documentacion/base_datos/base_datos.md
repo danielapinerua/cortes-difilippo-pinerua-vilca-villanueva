@@ -547,7 +547,11 @@ RF-02, RF-04, RF-10, RF-11, US02 (crear), US05 (consultar), US09 (atender), US14
 **Reglas de negocio**
 
 - Nace **siempre** con `status_id = 1` (pendiente).
-- El par (`client_id`, `service_id`) debe existir en `client_services`.
+- La API lo hace explícito en el `INSERT`: `status_id = 1`, `priority_id = NULL` y `administrator_id = NULL`.
+- El par (`client_id`, `service_id`) debe existir en `client_services`. Si el servicio no está contratado, la API responde `404` (no revela si el servicio existe).
+- `modification_type` es obligatorio y la API lo limita a 100 caracteres, igual que el `VARCHAR(100)`.
+- `description` es opcional; la API limita el texto a 2000 caracteres y guarda `NULL` si viene vacío.
+- Se permiten solicitudes duplicadas: no hay regla que impida pedir dos veces el mismo cambio.
 - Al atender: `status_id = 5` (realizado) y `resolved_at = NOW()`.
 - Al rechazar: `status_id = 4` (rechazado), `rejection_reason` obligatorio y `resolved_at = NOW()`.
 - El tiempo de atención se calcula como `resolved_at - created_at`.

@@ -4,39 +4,66 @@ from ..constants import STATUS_COMPLETED, STATUS_PENDING, STATUS_REJECTED
 from ..errors import ConflictError, NotFoundError, ValidationError
 from ..repositories import administrators_repository, clients_repository, service_requests_repository
 
-def create_service_request(user_id, service_id, modification_type, description=None):
-    """Crea una solicitud de modificación para un servicio contratado."""
+MODIFICATION_TYPE_MAX = 100
+DESCRIPTION_MAX = 2000
 
+
+def _validate_create(service_id, modification_type, description):
+    """Valida el alta y devuelve (valores_limpios, errores)."""
+    errors, clean = {}, {}
+
+    if isinstance(service_id, bool) or not isinstance(service_id, int) or service_id <= 0:
+        errors["service_id"] = "Es obligatorio y debe ser un entero positivo."
+    else:
+        clean["service_id"] = service_id
+
+    if not isinstance(modification_type, str) or not modification_type.strip():
+        errors["modification_type"] = "Es obligatorio y debe ser texto."
+    elif len(modification_type.strip()) > MODIFICATION_TYPE_MAX:
+        errors["modification_type"] = f"Máximo {MODIFICATION_TYPE_MAX} caracteres."
+    else:
+        clean["modification_type"] = modification_type.strip()
+
+    if description is not None:
+        if not isinstance(description, str):
+            errors["description"] = "Debe ser texto."
+        elif len(description.strip()) > DESCRIPTION_MAX:
+            errors["description"] = f"Máximo {DESCRIPTION_MAX} caracteres."
+        else:
+            clean["description"] = description.strip() or None
+    else:
+        clean["description"] = None
+
+    return clean, errors
+
+
+def create_service_request(user_id, service_id, modification_type, description=None):
+    """Crea una solicitud de modificación para un servicio contratado (US02)."""
     client_id = clients_repository.get_client_id_by_user_id(user_id)
 
     if client_id is None:
         raise NotFoundError("No existe el perfil de cliente.")
 
-    if not service_requests_repository.is_contracted_by_client(client_id, service_id):
+    clean, errors = _validate_create(service_id, modification_type, description)
+    if errors:
+        raise ValidationError("Hay datos inválidos.", details=errors)
+
+    if not service_requests_repository.is_contracted_by_client(
+        client_id, clean["service_id"]
+    ):
         raise NotFoundError("El cliente no tiene contratado ese servicio.")
 
-    if not isinstance(modification_type, str) or not modification_type.strip():
-        raise ValidationError("El tipo de modificación es obligatorio.")
-
-    modification_type = modification_type.strip()
-
-    if len(modification_type) > 100:
-        raise ValidationError("El tipo de modificación no puede superar los 100 caracteres.")
-
-    if description is not None:
-        if not isinstance(description, str):
-            raise ValidationError("La descripción debe ser un texto.")
-
-        description = description.strip()
-
-        if not description:
-            description = None
-
     request_id = service_requests_repository.create(
-        client_id, service_id, modification_type, description
+        client_id,
+        clean["service_id"],
+        clean["modification_type"],
+        clean["description"],
     )
 
-    return service_requests_repository.get_by_id(request_id)
+    row = service_requests_repository.get_detail(request_id)
+    if row is None:
+        raise NotFoundError("La solicitud no existe.")
+    return row
 
 
 def attend_service_request(admin_user_id, request_id, decision, rejection_reason=None):

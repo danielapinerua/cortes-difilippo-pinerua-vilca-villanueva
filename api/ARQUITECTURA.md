@@ -88,11 +88,13 @@ api/
     ├── test_plans.py
     ├── test_services.py
     ├── test_clients.py                 (US06)
+    ├── test_service_requests_create.py (US02)
     ├── test_service_requests_admin.py  (US09)
     ├── test_service_requests_list.py   (US14/US05)
     └── e2e/                            (MySQL real)
         ├── conftest.py
-        └── test_plans_e2e.py           (US07)
+        ├── test_plans_e2e.py           (US07)
+        └── test_service_requests_e2e.py (US02)
 ```
 
 Convención de nombres: un recurso = tres archivos con el mismo nombre base (`clients.py`, `clients_service.py`, `clients_repository.py`).
@@ -194,10 +196,24 @@ Estado: ✅ hecho · 🔲 pendiente · ❓ requiere decisión (sección 8). Las 
 | US16 | Iniciar sesión | `POST /auth/login`, `GET /auth/me` | público / logueado | ✅ backend (falta pantalla) |
 | US17 | Registrar un nuevo usuario | `POST /auth/register` · body `{name, email, password, password_confirm, phone?, dni?}` · asigna el plan Gratuito (id 4) · no devuelve token | público | ✅ backend (falta pantalla) |
 | US01 | Consultar servicios contratados | `GET /me/services` | client | ✅ backend |
-| US02 | Solicitar modificación de servicio | `POST /me/service-requests` · body `{service_id, modification_type, description?}` · el `client_id` sale del token | client | ✅ backend (⚠️ sin tests todavía) |
+| US02 | Solicitar modificación de servicio | `POST /me/service-requests` · body `{service_id, modification_type, description?}` · el `client_id` sale del token | client | ✅ backend (tests unitarios + e2e) |
 | US14 | Consultar solicitudes y estados | `GET /service-requests?status_id=&priority_id=&client_id=` (bandeja) · `GET /service-requests/{id}` (detalle) · `GET /me/service-requests?status_id=` (las del cliente) | admin / client | ✅ backend (falta pantalla) |
 | US05 | Consultar estado de una solicitud | Sale del mismo `GET /me/service-requests` de US14: cada solicitud trae `status_id`, `status_name`, `resolved_at` y `rejection_reason` | client | ✅ backend (falta pantalla) |
 | US09 | Atender solicitud | `PUT /service-requests/{id}/resolution` · body `{decision: "approve"\|"reject", rejection_reason}` | admin | ✅ backend (falta pantalla) |
+
+Reglas de US02 (solicitar modificación):
+- **Solo clientes.** Sin token → `401`; rol admin → `403`.
+- **`client_id` sale del token**, nunca del body.
+- **Body:** `{service_id, modification_type, description?}`.
+- **`service_id`** obligatorio, entero positivo. Faltante o inválido → `422` con `details.service_id`.
+- **`modification_type`** obligatorio, texto, ≤ 100 caracteres → `422` con detalle.
+- **`description`** opcional, texto, ≤ 2000 caracteres; vacía se guarda como `NULL`.
+- **Cliente sin perfil** → `404`.
+- **Servicio no contratado** → `404` (no revela si existe).
+- **Estado inicial:** `status_id = 1` (pendiente), `priority_id = NULL`, `administrator_id = NULL`.
+- **Respuesta `201`** con datos legibles (`status_name`, `service_name`, `client_name`, etc.).
+- **Duplicados permitidos.** No hay regla que impida pedir dos veces el mismo cambio.
+- **Notificación al admin:** fuera de alcance (US11).
 
 Reglas de US09 para el Sprint 1 (según `base_datos.md` 5.1): solo se atiende una solicitud en estado `pendiente`; aprobar → `realizado` (5); rechazar → `rechazado` (4) y el motivo es obligatorio (422 si falta); se guardan `administrator_id` y `resolved_at`. Atender una que ya no está pendiente → 409.
 
@@ -309,7 +325,7 @@ python -m pytest tests/e2e -m e2e
 ```
 `pytest.ini` excluye `tests/e2e` de la corrida normal (`-m "not e2e"`), así que `python -m pytest` sigue funcionando sin MySQL. Los e2e crean un administrador y datos con prefijo `e2e.` y los borran al terminar cada test.
 
-> **Qué está verificado:** 176 tests automáticos con repositorios en memoria. US04 cuenta con 9 pruebas específicas para autenticación, permisos, perfil de cliente, contratación del servicio, registro y validaciones. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos). La gestión de clientes (US06) también se corrió contra el MySQL real: alta `201`, listado y búsqueda `200`, modificación parcial con cambio de plan `200`, validaciones `422`, duplicados `409`, cliente sin permisos `403`, y limpieza posterior de los datos de prueba. La protección del plan por defecto (US07) se verificó contra el MySQL real: `DELETE /plans/4` → `409 protected_resource`, el plan sigue existiendo, el registro posterior devuelve `201`, un plan sin clientes se borra con `204`, uno en uso devuelve `409 in_use` y un id inexistente `404`. También se verificó que `PUT /plans/4` con `price > 0` → `409 protected_resource` y el precio sigue en 0, mientras que editar solo `name`/`description` o enviar `price: 0` sigue devolviendo `200`. Los datos de prueba se limpiaron al terminar. Esos mismos casos quedaron automatizados en `tests/e2e/test_plans_e2e.py` (11 tests sobre `tech_solutions_test`, incluidos los errores reales `1451` y `1062`). El SQL de la bandeja (US14/US05) se contrastó con los `CREATE TABLE` reales y se ejecutó sobre datos de prueba en SQLite (orden, filtros y `LEFT JOIN`); **todavía no se corrió contra el MySQL real**.
+> **Qué está verificado:** 191 tests automáticos con repositorios en memoria. US04 cuenta con 9 pruebas específicas para autenticación, permisos, perfil de cliente, contratación del servicio, registro y validaciones. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos). La gestión de clientes (US06) también se corrió contra el MySQL real: alta `201`, listado y búsqueda `200`, modificación parcial con cambio de plan `200`, validaciones `422`, duplicados `409`, cliente sin permisos `403`, y limpieza posterior de los datos de prueba. La protección del plan por defecto (US07) se verificó contra el MySQL real: `DELETE /plans/4` → `409 protected_resource`, el plan sigue existiendo, el registro posterior devuelve `201`, un plan sin clientes se borra con `204`, uno en uso devuelve `409 in_use` y un id inexistente `404`. También se verificó que `PUT /plans/4` con `price > 0` → `409 protected_resource` y el precio sigue en 0, mientras que editar solo `name`/`description` o enviar `price: 0` sigue devolviendo `200`. Los datos de prueba se limpiaron al terminar. Esos mismos casos quedaron automatizados en `tests/e2e/test_plans_e2e.py` (11 tests sobre `tech_solutions_test`, incluidos los errores reales `1451` y `1062`). US02 también se corrió contra el MySQL real: alta `201` con `status_id = 1` y `status_name = "pendiente"`, persistencia visible en `GET /me/service-requests`, servicio no contratado `404`, `service_id` faltante `422`, admin `403` y la solicitud visible en la bandeja del administrador; quedaron automatizados en `tests/e2e/test_service_requests_e2e.py` (6 tests). Total e2e: 17. El SQL de la bandeja (US14/US05) se contrastó con los `CREATE TABLE` reales y se ejecutó sobre datos de prueba en SQLite (orden, filtros y `LEFT JOIN`); **todavía no se corrió contra el MySQL real**.
 
 ## 8. Decisiones y puntos abiertos
 
@@ -359,3 +375,4 @@ g. **Verificación de email:** `users` no tiene columna para eso, así que la cu
 | 2026-11-02 | US04: registro de reclamos sobre servicios contratados, validación de datos, asignación provisoria de prioridad inicial y pruebas automatizadas. Suite completa: 165 tests. |
 | 2026-11-03 | US07: el plan por defecto (Gratuito) queda protegido contra el borrado (`409 protected_resource`). Un plan normal se sigue borrando (`204`) y uno en uso devuelve `409 in_use`. Verificado contra MySQL real. Suite completa: 169 tests. |
 | 2026-11-03 | US07: el precio del plan por defecto queda congelado en 0 (`DEFAULT_PLAN_PRICE`). `PUT /plans/4` con otro precio devuelve `409 protected_resource`; `name` y `description` se siguen editando. Suite completa: 176 tests (+ 11 e2e). |
+| 2026-11-03 | US02: alta de solicitudes de modificación con validación de `service_id`, `modification_type` y `description`, estado inicial pendiente explícito y respuesta con datos legibles. Tests unitarios + e2e. Suite completa: 191 tests (+ 17 e2e). |

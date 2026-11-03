@@ -15,10 +15,16 @@ def create(client_id, service_id, modification_type, description=None):
         cur.execute(
             """
             INSERT INTO service_requests
-                (client_id, service_id, modification_type, description)
-            VALUES (%s, %s, %s, %s)
+                (client_id, service_id, status_id, modification_type, description)
+            VALUES (%s, %s, %s, %s, %s)
             """,
-            (client_id, service_id, modification_type, description),
+            (
+                client_id,
+                service_id,
+                STATUS_PENDING,
+                modification_type,
+                description,
+            ),
         )
         return cur.lastrowid
 
@@ -73,6 +79,7 @@ _LIST_SELECT = """
            r.service_id, s.name AS service_name,
            r.status_id, st.name AS status_name,
            r.priority_id, p.name AS priority_name, p.level AS priority_level,
+           r.administrator_id,
            r.modification_type, r.description, r.rejection_reason,
            r.created_at, r.resolved_at
     FROM service_requests r

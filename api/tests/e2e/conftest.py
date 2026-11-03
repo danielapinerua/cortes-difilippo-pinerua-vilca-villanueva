@@ -10,6 +10,7 @@ script de migración:
     cd api && pytest tests/e2e -m e2e
 """
 import os
+from types import SimpleNamespace
 
 import pytest
 from dotenv import load_dotenv
@@ -27,6 +28,10 @@ from app.security import hash_password
 
 ADMIN_EMAIL = "e2e.admin@ejemplo.com"
 ADMIN_PASSWORD = "E2eClave123"
+CLIENT_EMAIL = "e2e.client@ejemplo.com"
+CLIENT_PASSWORD = "E2eClave123"
+CONTRACTED_SERVICE_ID = 1
+NOT_CONTRACTED_SERVICE_ID = 2
 # Prefijo de todo dato creado por los e2e: se borra antes y después de cada test.
 PREFIX = "e2e.%"
 
@@ -57,6 +62,17 @@ def _cleanup(app):
     with app.app_context():
         db = get_db()
         with db.cursor() as cur:
+            # service_requests referencia client_services con RESTRICT.
+            cur.execute(
+                "DELETE FROM service_requests WHERE client_id IN "
+                "(SELECT id FROM clients WHERE email LIKE %s)",
+                (PREFIX,),
+            )
+            cur.execute(
+                "DELETE FROM client_services WHERE client_id IN "
+                "(SELECT id FROM clients WHERE email LIKE %s)",
+                (PREFIX,),
+            )
             cur.execute("DELETE FROM clients WHERE email LIKE %s", (PREFIX,))
             cur.execute(
                 "DELETE FROM administrators WHERE user_id IN "
@@ -113,3 +129,40 @@ def admin(http):
     )
     assert r.status_code == 200, r.get_json()
     return {"Authorization": f"Bearer {r.get_json()['token']}"}
+
+
+@pytest.fixture
+def customer(http, app):
+    """Cliente de prueba con el servicio CONTRACTED_SERVICE_ID contratado."""
+    with app.app_context():
+        db = get_db()
+        with db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO users (email, password_hash, role) "
+                "VALUES (%s, %s, 'client')",
+                (CLIENT_EMAIL, hash_password(CLIENT_PASSWORD)),
+            )
+            user_id = cur.lastrowid
+            cur.execute(
+                "INSERT INTO clients (user_id, plan_id, name, email) "
+                "VALUES (%s, %s, %s, %s)",
+                (user_id, DEFAULT_PLAN_ID, "E2E Cliente", CLIENT_EMAIL),
+            )
+            client_id = cur.lastrowid
+            cur.execute(
+                "INSERT INTO client_services (client_id, service_id) "
+                "VALUES (%s, %s)",
+                (client_id, CONTRACTED_SERVICE_ID),
+            )
+        db.commit()
+
+    r = http.post(
+        "/api/v1/auth/login",
+        json={"email": CLIENT_EMAIL, "password": CLIENT_PASSWORD},
+    )
+    assert r.status_code == 200, r.get_json()
+
+    return SimpleNamespace(
+        headers={"Authorization": f"Bearer {r.get_json()['token']}"},
+        client_id=client_id,
+    )

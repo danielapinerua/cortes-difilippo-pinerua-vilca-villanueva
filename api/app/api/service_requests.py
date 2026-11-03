@@ -1,11 +1,11 @@
 """Rutas para solicitudes de modificación de servicios (US02)."""
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, g, jsonify
 
 from ..constants import ROLE_CLIENT
 from ..security import role_required
 from ..services import service_requests_service
-from ._helpers import int_query_args
+from ._helpers import int_query_args, json_body
 
 
 bp = Blueprint("service_requests", __name__, url_prefix="/me/service-requests")
@@ -15,10 +15,7 @@ bp = Blueprint("service_requests", __name__, url_prefix="/me/service-requests")
 def create_service_request():
     """Crea una solicitud de modificación de un servicio."""
 
-    data = request.get_json(silent=True)
-
-    if not isinstance(data, dict):
-        return jsonify({"error": "Se esperaba un objeto JSON."}), 400
+    data = json_body()
 
     result = service_requests_service.create_service_request(
         user_id=g.current_user["id"],
