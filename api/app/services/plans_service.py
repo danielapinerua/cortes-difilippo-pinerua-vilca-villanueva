@@ -10,7 +10,8 @@ Los límites de largo (100 / 500) salen del esquema SQL:
 """
 from decimal import Decimal
 
-from ..errors import NotFoundError, ValidationError
+from ..constants import DEFAULT_PLAN_ID
+from ..errors import NotFoundError, ProtectedResourceError, ValidationError
 from ..repositories import plans_repository as repo
 
 NAME_MAX = 100
@@ -90,6 +91,16 @@ def update_plan(plan_id, data):
     return get_plan(plan_id)
 
 
+def _ensure_not_default_plan(plan_id):
+    """El plan Gratuito no se borra: US17 lo usa al registrar (DEFAULT_PLAN_ID)."""
+    if plan_id == DEFAULT_PLAN_ID:
+        raise ProtectedResourceError(
+            "No se puede eliminar el plan Gratuito: es el que se asigna "
+            "automáticamente al registrar un usuario (US17)."
+        )
+
+
 def delete_plan(plan_id):
     get_plan(plan_id)  # si no existe, lanza 404
+    _ensure_not_default_plan(plan_id)  # si es el plan por defecto, lanza 409
     repo.delete(plan_id)

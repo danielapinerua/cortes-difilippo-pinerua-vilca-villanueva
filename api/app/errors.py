@@ -64,6 +64,11 @@ class InvalidReferenceError(ConflictError):
     code = "invalid_reference"
 
 
+class ProtectedResourceError(ConflictError):
+    """El registro está protegido por una regla del sistema (HTTP 409)."""
+    code = "protected_resource"
+
+
 def _error_response(status, code, message, details=None):
     body = {"error": {"code": code, "message": message}}
     if details:

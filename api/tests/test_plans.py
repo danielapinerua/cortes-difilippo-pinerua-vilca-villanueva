@@ -96,6 +96,44 @@ def test_eliminar(client, admin):
     assert client.get(f"{BASE}/1", headers=admin).status_code == 404
 
 
+# ---- Plan por defecto (US17) ------------------------------------------------
+
+def test_no_se_puede_eliminar_el_plan_por_defecto(client, admin, default_plan):
+    r = client.delete(f"{BASE}/4", headers=admin)
+
+    assert r.status_code == 409
+    err = r.get_json()["error"]
+    assert err["code"] == "protected_resource"
+    assert "Gratuito" in err["message"]
+
+
+def test_el_plan_por_defecto_sigue_existiendo(client, admin, default_plan):
+    client.delete(f"{BASE}/4", headers=admin)
+
+    r = client.get(f"{BASE}/4", headers=admin)
+    assert r.status_code == 200
+    assert r.get_json()["name"] == "Gratuito"
+
+
+def test_eliminar_plan_inexistente_devuelve_404(client, admin):
+    assert client.delete(f"{BASE}/99", headers=admin).status_code == 404
+
+
+def test_el_registro_sigue_funcionando_tras_el_intento(client, admin, default_plan):
+    """Regresión: el 409 del plan por defecto no debe romper US17."""
+    assert client.delete(f"{BASE}/4", headers=admin).status_code == 409
+
+    r = client.post("/api/v1/auth/register", json={
+        "name": "Mariana Díaz",
+        "email": "mariana@ejemplo.com",
+        "password": "ClaveSegura123",
+        "password_confirm": "ClaveSegura123",
+    })
+
+    assert r.status_code == 201
+    assert r.get_json()["client"]["plan"] == {"id": 4, "name": "Gratuito"}
+
+
 # ---- Errores de la base ----------------------------------------------------
 
 def test_eliminar_plan_en_uso_devuelve_409_in_use(client, admin, monkeypatch):

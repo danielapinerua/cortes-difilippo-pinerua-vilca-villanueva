@@ -202,6 +202,7 @@ RF-06, US07 (gestión), US13/US19 (cambio de plan), Reporte 1.
 - Un plan **no se puede borrar** si algún cliente lo tiene asignado (`ON DELETE RESTRICT`).
 - `DECIMAL(12,2)` evita los errores de redondeo de `FLOAT` en dinero.
 - El plan **Gratuito (id 4)** es el que recibe un visitante al registrarse (US17). La API lo referencia con `DEFAULT_PLAN_ID` en `api/app/constants.py`.
+- El plan por defecto **no se puede borrar desde la API**: `DELETE /plans/4` responde `409 protected_resource`. Si se borrara, el registro público quedaría roto hasta reponer la fila con el mismo id.
 
 **Ejemplo de fila**
 
