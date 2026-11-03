@@ -60,31 +60,35 @@ api/
 │   │   ├── clients.py         GET/POST /clients, GET/PUT /clients/{id}  (US06)
 │   │   ├── services.py        GET /me/services                         (US01)
 │   │   ├── service_requests.py        POST y GET /me/service-requests  (US02, US14/US05)
-│   │   └── service_requests_admin.py  GET /service-requests, GET /service-requests/{id}, PUT .../resolution  (US14, US09)
+│   │   ├── claims.py          POST /me/claims (US04)
+│   │   └── service_requests_admin.py  GET /service-requests, GET /service-requests/{id}, PUT .../resolution (US14, US09)
 │   ├── services/              CAPA DE NEGOCIO
 │   │   ├── auth_service.py
 │   │   ├── plans_service.py
 │   │   ├── clients_service.py
 │   │   ├── services_service.py
-│   │   └── service_requests_service.py
-│   └── repositories/          CAPA DE DATOS (SQL)
+│   │   ├── service_requests_service.py
+│   │   └── claims_service.py
+│   └── repositories/           CAPA DE DATOS (SQL)
 │       ├── users_repository.py
 │       ├── clients_repository.py
 │       ├── administrators_repository.py
 │       ├── plans_repository.py
+│       ├── claims_repository.py
 │       ├── services_repository.py
 │       └── service_requests_repository.py
 ├── scripts/
 │   └── create_user.py         Crea un admin o cliente de prueba (la tabla users arranca vacía)
 └── tests/
-    ├── conftest.py            Repositorios falsos en memoria + logins de prueba
+    ├── conftest.py
     ├── test_auth.py
     ├── test_register.py
+    ├── test_claims.py                  (US04)
     ├── test_plans.py
     ├── test_services.py
-    ├── test_clients.py                  (US06)
-    ├── test_service_requests_admin.py   (US09)
-    └── test_service_requests_list.py    (US14/US05)
+    ├── test_clients.py                 (US06)
+    ├── test_service_requests_admin.py  (US09)
+    └── test_service_requests_list.py   (US14/US05)
 ```
 
 Convención de nombres: un recurso = tres archivos con el mismo nombre base (`clients.py`, `clients_service.py`, `clients_repository.py`).
@@ -218,7 +222,7 @@ Reglas de US06 (gestión de clientes):
 | US06 | Gestionar clientes | `GET/POST /clients` · `GET/PUT /clients/{id}` · filtros `?search=&plan_id=` | ✅ backend |
 | US08 | Gestionar servicios | `/services` CRUD | 🔲 |
 | US03 | Adjuntar documentación | `POST /service-requests/{id}/attachments` | ❓ ver 8.2-d |
-| US04 | Realizar un reclamo | `POST /claims` | 🔲 |
+| US04 | Realizar un reclamo | `POST /me/claims` · body `{service_id, category, description}` · el `client_id` sale del token | client | ✅ backend (9 tests) |
 | US13 | Solicitar cambio de plan | `POST /plan-change-requests` | 🔲 |
 | US18 | Validar identidad del cliente | interno (VeriCheck), lo usa el service de US13 | 🔲 |
 | US19 | Aprobar o rechazar cambio de plan | `PUT /plan-change-requests/{id}/resolution` | 🔲 |
@@ -229,6 +233,16 @@ Reglas de US06 (gestión de clientes):
 | US20 | Enviar facturación a PagoNet | interno, al aprobar un cambio de plan | 🔲 |
 | US22 | Enviar métricas a AnalytixPro | tarea diaria programada | 🔲 |
 | US23 | Auditoría de integraciones | se escribe en `integration_audit_logs` desde cada integración | 🔲 |
+
+**Reglas de US04 (realizar un reclamo):**
+- **Solo clientes autenticados.** Sin token → `401`; rol administrador → `403`.
+- **El cliente debe tener perfil** en `clients`; si no existe → `404`.
+- **El servicio debe estar contratado por el cliente autenticado.** El `client_id` se obtiene del token, nunca del cuerpo JSON. Si el servicio no está contratado → `404`.
+- **Datos obligatorios:** `service_id`, `category` y `description`.
+- **Categorías permitidas:** `technical`, `support`, `service` y `other`.
+- **Descripción:** no puede estar vacía.
+- **Registro:** el reclamo se crea con estado inicial `pending`, sin administrador asignado y con prioridad inicial media (`priority_id = 2`, decisión provisoria pendiente de confirmación con el equipo).
+- **Respuesta exitosa:** `201` con los datos del reclamo registrado.
 
 **Crecimiento previsto:** las integraciones externas (VeriCheck, PagoNet, NotiSys, AnalytixPro, CRMMax) van en una cuarta carpeta `app/integrations/`, con un archivo por sistema. Los services las usan igual que a un repositorio, y cada llamada se anota en `integration_audit_logs`. Así, si una integración cambia, no se toca la lógica de negocio.
 
@@ -274,7 +288,7 @@ python -m pytest
 ```
 Funcionan porque `tests/conftest.py` reemplaza los repositorios por versiones en memoria. Es la ventaja concreta de separar en capas.
 
-> **Qué está verificado:** 156 tests automáticos con repositorios en memoria. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos). La gestión de clientes (US06) también se corrió contra el MySQL real: alta `201`, listado y búsqueda `200`, modificación parcial con cambio de plan `200`, validaciones `422`, duplicados `409`, cliente sin permisos `403`, y limpieza posterior de los datos de prueba. El SQL de la bandeja (US14/US05) se contrastó con los `CREATE TABLE` reales y se ejecutó sobre datos de prueba en SQLite (orden, filtros y `LEFT JOIN`); **todavía no se corrió contra el MySQL real**.
+> **Qué está verificado:** 165 tests automáticos con repositorios en memoria. US04 cuenta con 9 pruebas específicas para autenticación, permisos, perfil de cliente, contratación del servicio, registro y validaciones. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos). La gestión de clientes (US06) también se corrió contra el MySQL real: alta `201`, listado y búsqueda `200`, modificación parcial con cambio de plan `200`, validaciones `422`, duplicados `409`, cliente sin permisos `403`, y limpieza posterior de los datos de prueba. El SQL de la bandeja (US14/US05) se contrastó con los `CREATE TABLE` reales y se ejecutó sobre datos de prueba en SQLite (orden, filtros y `LEFT JOIN`); **todavía no se corrió contra el MySQL real**.
 
 ## 8. Decisiones y puntos abiertos
 
@@ -321,3 +335,4 @@ g. **Verificación de email:** `users` no tiene columna para eso, así que la cu
 | 2026-10-29 | US17 implementada: `POST /auth/register` con validaciones, plan Gratuito por defecto y transacción explícita. 68 tests. |
 | 2026-11-02 | US14 y US05: bandeja del administrador con filtros y orden por prioridad, detalle, y `GET /me/service-requests` para el cliente. Mapa del Sprint 1 al día con lo implementado (US01, US02, US09). 114 tests. |
 | 2026-11-02 | US06: gestión de clientes con listado y búsqueda, alta, detalle y modificación parcial; validación por campo, duplicados y vínculo automático con cuentas de cliente. 156 tests. |
+| 2026-11-02 | US04: registro de reclamos sobre servicios contratados, validación de datos, asignación provisoria de prioridad inicial y pruebas automatizadas. Suite completa: 165 tests. |
