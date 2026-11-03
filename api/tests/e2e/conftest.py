@@ -21,6 +21,7 @@ load_dotenv()
 
 from app import create_app
 from app.config import Config
+from app.constants import DEFAULT_PLAN_ID, DEFAULT_PLAN_PRICE
 from app.db import get_db
 from app.security import hash_password
 
@@ -63,7 +64,21 @@ def _cleanup(app):
                 (PREFIX,),
             )
             cur.execute("DELETE FROM users WHERE email LIKE %s", (PREFIX,))
-            cur.execute("DELETE FROM plans WHERE name LIKE %s", ("E2E %",))
+            cur.execute(
+                "DELETE FROM plans WHERE name LIKE %s AND id <> %s",
+                ("E2E %", DEFAULT_PLAN_ID),
+            )
+            # Restaurar el plan por defecto: algún test puede cambiarle el nombre.
+            cur.execute(
+                "UPDATE plans SET name = %s, description = %s, price = %s "
+                "WHERE id = %s",
+                (
+                    "Gratuito",
+                    "Plan de bienvenida: acceso al sistema y al catálogo",
+                    DEFAULT_PLAN_PRICE,
+                    DEFAULT_PLAN_ID,
+                ),
+            )
         db.commit()
 
 

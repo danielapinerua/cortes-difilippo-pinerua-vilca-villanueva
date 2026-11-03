@@ -203,6 +203,7 @@ RF-06, US07 (gestión), US13/US19 (cambio de plan), Reporte 1.
 - `DECIMAL(12,2)` evita los errores de redondeo de `FLOAT` en dinero.
 - El plan **Gratuito (id 4)** es el que recibe un visitante al registrarse (US17). La API lo referencia con `DEFAULT_PLAN_ID` en `api/app/constants.py`.
 - El plan por defecto **no se puede borrar desde la API**: `DELETE /plans/4` responde `409 protected_resource`. Si se borrara, el registro público quedaría roto hasta reponer la fila con el mismo id.
+- La API tampoco permite **cambiarle el precio**: `PUT /plans/4` con un valor distinto de 0 responde `409 protected_resource` (constante `DEFAULT_PLAN_PRICE`). Debe quedar siempre en 0.
 
 **Ejemplo de fila**
 

@@ -12,7 +12,7 @@ Requieren la base `tech_solutions_test`:
 """
 import pytest
 
-from app.constants import DEFAULT_PLAN_ID
+from app.constants import DEFAULT_PLAN_ID, DEFAULT_PLAN_PRICE
 
 # Sin esta marca, `pytest.ini` (`-m "not e2e"`) los excluye de la corrida normal.
 pytestmark = pytest.mark.e2e
@@ -39,7 +39,7 @@ def test_el_plan_por_defecto_sigue_existiendo(http, admin):
     assert r.status_code == 200
     body = r.get_json()
     assert body["name"] == "Gratuito"
-    assert body["price"] == 0
+    assert body["price"] == DEFAULT_PLAN_PRICE
 
 
 def test_el_registro_sigue_funcionando_tras_el_intento(http, admin):
@@ -55,6 +55,49 @@ def test_el_registro_sigue_funcionando_tras_el_intento(http, admin):
 
     assert r.status_code == 201
     assert r.get_json()["client"]["plan"] == {"id": DEFAULT_PLAN_ID, "name": "Gratuito"}
+
+
+# ---- Precio del plan por defecto --------------------------------------------
+
+def test_no_se_puede_cambiar_el_precio_del_plan_por_defecto(http, admin):
+    r = http.put(f"{BASE}/{DEFAULT_PLAN_ID}", json={"price": 100}, headers=admin)
+
+    assert r.status_code == 409
+    err = r.get_json()["error"]
+    assert err["code"] == "protected_resource"
+    assert "precio" in err["message"]
+
+
+def test_el_precio_del_plan_por_defecto_sigue_en_cero(http, admin):
+    http.put(f"{BASE}/{DEFAULT_PLAN_ID}", json={"price": 100}, headers=admin)
+
+    r = http.get(f"{BASE}/{DEFAULT_PLAN_ID}", headers=admin)
+    assert r.status_code == 200
+    assert r.get_json()["price"] == DEFAULT_PLAN_PRICE
+
+
+def test_poner_el_precio_en_cero_esta_permitido(http, admin):
+    r = http.put(
+        f"{BASE}/{DEFAULT_PLAN_ID}",
+        json={"price": DEFAULT_PLAN_PRICE},
+        headers=admin,
+    )
+
+    assert r.status_code == 200
+    assert r.get_json()["price"] == DEFAULT_PLAN_PRICE
+
+
+def test_se_puede_editar_el_nombre_sin_tocar_el_precio(http, admin):
+    r = http.put(
+        f"{BASE}/{DEFAULT_PLAN_ID}",
+        json={"name": "Gratuito E2E"},
+        headers=admin,
+    )
+
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["name"] == "Gratuito E2E"
+    assert body["price"] == DEFAULT_PLAN_PRICE
 
 
 # ---- CRUD contra MySQL ------------------------------------------------------

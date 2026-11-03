@@ -157,7 +157,7 @@ Authorization: Bearer <token>
 | 409 | `duplicate_entry` | Choca con un valor único (ej. nombre de plan o email repetido) |
 | 409 | `in_use` | No se puede borrar: hay registros que dependen de este |
 | 409 | `invalid_reference` | Referencia algo que no existe (ej. un servicio que el cliente no contrató) |
-| 409 | `protected_resource` | El registro está protegido por una regla del sistema (ej. el plan por defecto) |
+| 409 | `protected_resource` | El registro está protegido por una regla del sistema (ej. el plan por defecto no se borra ni cambia de precio) |
 | 422 | `validation_error` | Datos faltantes o inválidos (`details` dice cuáles) |
 | 503 | `db_unavailable` | MySQL no responde |
 | 500 | `internal_error` | Error no previsto (se registra en el log) |
@@ -225,7 +225,7 @@ Reglas de US07 (gestión de planes):
 - **El plan por defecto (`DEFAULT_PLAN_ID`, Gratuito) no se puede eliminar** → `409 protected_resource`. Es el que asigna US17 al registrar: si se borrara, el registro público quedaría roto hasta reponer la fila con el mismo id.
 - **Un plan en uso no se puede borrar:** la FK `RESTRICT` lo impide → `409 in_use`.
 - **`PUT` es parcial:** un cuerpo vacío devuelve el plan sin cambios.
-- **Pendiente:** no se protege todavía el precio del plan Gratuito (`PUT` con `price > 0`).
+- **El precio del plan por defecto (`DEFAULT_PLAN_PRICE`) no se puede cambiar** → `409 protected_resource`. `name` y `description` sí se editan; `price: 0` o ausente está permitido. El formato se valida primero (`422`) y después se aplica esta regla (`409`).
 
 ### Después del Sprint 1
 
@@ -309,7 +309,7 @@ python -m pytest tests/e2e -m e2e
 ```
 `pytest.ini` excluye `tests/e2e` de la corrida normal (`-m "not e2e"`), así que `python -m pytest` sigue funcionando sin MySQL. Los e2e crean un administrador y datos con prefijo `e2e.` y los borran al terminar cada test.
 
-> **Qué está verificado:** 169 tests automáticos con repositorios en memoria. US04 cuenta con 9 pruebas específicas para autenticación, permisos, perfil de cliente, contratación del servicio, registro y validaciones. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos). La gestión de clientes (US06) también se corrió contra el MySQL real: alta `201`, listado y búsqueda `200`, modificación parcial con cambio de plan `200`, validaciones `422`, duplicados `409`, cliente sin permisos `403`, y limpieza posterior de los datos de prueba. La protección del plan por defecto (US07) se verificó contra el MySQL real: `DELETE /plans/4` → `409 protected_resource`, el plan sigue existiendo, el registro posterior devuelve `201`, un plan sin clientes se borra con `204`, uno en uso devuelve `409 in_use` y un id inexistente `404`; los datos de prueba se limpiaron al terminar. Esos mismos casos quedaron automatizados en `tests/e2e/test_plans_e2e.py` (7 tests sobre `tech_solutions_test`, incluidos los errores reales `1451` y `1062`). El SQL de la bandeja (US14/US05) se contrastó con los `CREATE TABLE` reales y se ejecutó sobre datos de prueba en SQLite (orden, filtros y `LEFT JOIN`); **todavía no se corrió contra el MySQL real**.
+> **Qué está verificado:** 176 tests automáticos con repositorios en memoria. US04 cuenta con 9 pruebas específicas para autenticación, permisos, perfil de cliente, contratación del servicio, registro y validaciones. Además, el registro (US17) se probó contra el MySQL real: alta con `201`, email/DNI duplicado con `409`, login posterior con `200` y rollback de la transacción cuando falla el segundo `INSERT` (sin dejar usuarios huérfanos). La gestión de clientes (US06) también se corrió contra el MySQL real: alta `201`, listado y búsqueda `200`, modificación parcial con cambio de plan `200`, validaciones `422`, duplicados `409`, cliente sin permisos `403`, y limpieza posterior de los datos de prueba. La protección del plan por defecto (US07) se verificó contra el MySQL real: `DELETE /plans/4` → `409 protected_resource`, el plan sigue existiendo, el registro posterior devuelve `201`, un plan sin clientes se borra con `204`, uno en uso devuelve `409 in_use` y un id inexistente `404`. También se verificó que `PUT /plans/4` con `price > 0` → `409 protected_resource` y el precio sigue en 0, mientras que editar solo `name`/`description` o enviar `price: 0` sigue devolviendo `200`. Los datos de prueba se limpiaron al terminar. Esos mismos casos quedaron automatizados en `tests/e2e/test_plans_e2e.py` (11 tests sobre `tech_solutions_test`, incluidos los errores reales `1451` y `1062`). El SQL de la bandeja (US14/US05) se contrastó con los `CREATE TABLE` reales y se ejecutó sobre datos de prueba en SQLite (orden, filtros y `LEFT JOIN`); **todavía no se corrió contra el MySQL real**.
 
 ## 8. Decisiones y puntos abiertos
 
@@ -326,7 +326,7 @@ python -m pytest tests/e2e -m e2e
 
 ### 8.2 Pendientes que afectan a la API
 
-a. **`clients.plan_id` es `NOT NULL`** → resuelto con el plan **Gratuito (id 4)**, que el script SQL carga con precio `0.00`. Al registrarse, el cliente nace con ese plan y sin servicios contratados. La constante vive en `constants.py` (`DEFAULT_PLAN_ID`).
+a. **`clients.plan_id` es `NOT NULL`** → resuelto con el plan **Gratuito (id 4)**, que el script SQL carga con precio `0.00`. Al registrarse, el cliente nace con ese plan y sin servicios contratados. La constante vive en `constants.py` (`DEFAULT_PLAN_ID` y `DEFAULT_PLAN_PRICE`).
 b. **US15 (sistema externo)** no tiene tabla de credenciales. Opción simple: una API key fija en `.env` que el sistema externo manda en un header.
 c. **Idioma de los estados:** `request_statuses` está en español y `claims.status`/`category` en inglés. El frontend va a recibir ambos; hay que unificar o mapear.
 d. **Archivos adjuntos (US03):** el script guarda la ruta, pero falta decidir dónde se guardan los archivos (carpeta `uploads/` fuera de git), formatos y tamaño máximo.
@@ -358,3 +358,4 @@ g. **Verificación de email:** `users` no tiene columna para eso, así que la cu
 | 2026-11-02 | US06: gestión de clientes con listado y búsqueda, alta, detalle y modificación parcial; validación por campo, duplicados y vínculo automático con cuentas de cliente. 156 tests. |
 | 2026-11-02 | US04: registro de reclamos sobre servicios contratados, validación de datos, asignación provisoria de prioridad inicial y pruebas automatizadas. Suite completa: 165 tests. |
 | 2026-11-03 | US07: el plan por defecto (Gratuito) queda protegido contra el borrado (`409 protected_resource`). Un plan normal se sigue borrando (`204`) y uno en uso devuelve `409 in_use`. Verificado contra MySQL real. Suite completa: 169 tests. |
+| 2026-11-03 | US07: el precio del plan por defecto queda congelado en 0 (`DEFAULT_PLAN_PRICE`). `PUT /plans/4` con otro precio devuelve `409 protected_resource`; `name` y `description` se siguen editando. Suite completa: 176 tests (+ 11 e2e). |

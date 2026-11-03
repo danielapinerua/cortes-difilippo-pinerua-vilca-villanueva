@@ -10,7 +10,7 @@ Los límites de largo (100 / 500) salen del esquema SQL:
 """
 from decimal import Decimal
 
-from ..constants import DEFAULT_PLAN_ID
+from ..constants import DEFAULT_PLAN_ID, DEFAULT_PLAN_PRICE
 from ..errors import NotFoundError, ProtectedResourceError, ValidationError
 from ..repositories import plans_repository as repo
 
@@ -85,10 +85,23 @@ def create_plan(data):
 
 def update_plan(plan_id, data):
     get_plan(plan_id)  # si no existe, lanza 404
-    clean = _validate(data, partial=True)
+    clean = _validate(data, partial=True)  # formatos inválidos, 422
+    _ensure_default_plan_price(plan_id, clean)  # precio protegido, 409
     if clean:
         repo.update(plan_id, clean)
     return get_plan(plan_id)
+
+
+def _ensure_default_plan_price(plan_id, clean):
+    """El plan Gratuito debe quedar siempre en 0 (US17 lo asigna al registrar)."""
+    if plan_id != DEFAULT_PLAN_ID:
+        return
+
+    price = clean.get("price")
+    if price is not None and price != DEFAULT_PLAN_PRICE:
+        raise ProtectedResourceError(
+            "El plan Gratuito debe tener precio 0: no se puede modificar su precio."
+        )
 
 
 def _ensure_not_default_plan(plan_id):

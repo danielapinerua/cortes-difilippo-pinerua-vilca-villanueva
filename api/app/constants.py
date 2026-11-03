@@ -16,6 +16,9 @@ ROLE_ADMIN = "admin"
 # Debe coincidir con el plan "Gratuito" del script SQL.
 DEFAULT_PLAN_ID = 4
 
+# plans.price — el plan por defecto es gratuito y su precio no se puede cambiar.
+DEFAULT_PLAN_PRICE = 0
+
 # users.password_hash — política de contraseñas (US17).
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 128

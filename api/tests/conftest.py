@@ -10,6 +10,7 @@ import pytest
 
 from app import create_app
 from app.config import TestConfig
+from app.constants import DEFAULT_PLAN_PRICE
 from app.repositories import clients_repository, plans_repository, users_repository
 from app.security import hash_password
 
@@ -49,7 +50,7 @@ def fake_plans(monkeypatch):
 @pytest.fixture
 def default_plan(fake_plans):
     """Plan Gratuito (id 4), el que recibe un visitante al registrarse."""
-    plan = {"id": 4, "name": "Gratuito", "description": "Plan de bienvenida", "price": 0.0}
+    plan = {"id": 4, "name": "Gratuito", "description": "Plan de bienvenida", "price": DEFAULT_PLAN_PRICE}
     fake_plans[4] = plan
     return plan
 

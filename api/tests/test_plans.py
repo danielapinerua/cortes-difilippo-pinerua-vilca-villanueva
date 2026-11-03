@@ -1,5 +1,6 @@
 import pymysql
 
+from app.constants import DEFAULT_PLAN_PRICE
 from app.repositories import plans_repository
 
 BASE = "/api/v1/plans"
@@ -132,6 +133,65 @@ def test_el_registro_sigue_funcionando_tras_el_intento(client, admin, default_pl
 
     assert r.status_code == 201
     assert r.get_json()["client"]["plan"] == {"id": 4, "name": "Gratuito"}
+
+
+# ---- Precio del plan por defecto -------------------------------------------
+
+def test_no_se_puede_cambiar_el_precio_del_plan_por_defecto(client, admin, default_plan):
+    r = client.put(f"{BASE}/4", json={"price": 100}, headers=admin)
+
+    assert r.status_code == 409
+    err = r.get_json()["error"]
+    assert err["code"] == "protected_resource"
+    assert "precio" in err["message"]
+
+
+def test_el_precio_del_plan_por_defecto_sigue_en_cero(client, admin, default_plan):
+    client.put(f"{BASE}/4", json={"price": 100}, headers=admin)
+
+    r = client.get(f"{BASE}/4", headers=admin)
+    assert r.status_code == 200
+    assert r.get_json()["price"] == DEFAULT_PLAN_PRICE
+
+
+def test_el_rechazo_no_aplica_cambios_parciales(client, admin, default_plan):
+    r = client.put(f"{BASE}/4", json={"name": "Gratuito Plus", "price": 100}, headers=admin)
+
+    assert r.status_code == 409
+    body = client.get(f"{BASE}/4", headers=admin).get_json()
+    assert body["name"] == "Gratuito"
+    assert body["price"] == DEFAULT_PLAN_PRICE
+
+
+def test_se_puede_editar_el_nombre_del_plan_por_defecto(client, admin, default_plan):
+    r = client.put(f"{BASE}/4", json={"name": "Gratuito Plus"}, headers=admin)
+
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["name"] == "Gratuito Plus"
+    assert body["price"] == DEFAULT_PLAN_PRICE
+
+
+def test_poner_el_precio_en_cero_esta_permitido(client, admin, default_plan):
+    r = client.put(f"{BASE}/4", json={"price": DEFAULT_PLAN_PRICE}, headers=admin)
+
+    assert r.status_code == 200
+    assert r.get_json()["price"] == DEFAULT_PLAN_PRICE
+
+
+def test_precio_invalido_en_el_plan_por_defecto_devuelve_422(client, admin, default_plan):
+    r = client.put(f"{BASE}/4", json={"price": -1}, headers=admin)
+
+    assert r.status_code == 422
+    assert r.get_json()["error"]["code"] == "validation_error"
+
+
+def test_otro_plan_si_puede_cambiar_el_precio(client, admin):
+    created = client.post(BASE, json={"name": "Básico", "price": 100}, headers=admin).get_json()
+    r = client.put(f"{BASE}/{created['id']}", json={"price": 250}, headers=admin)
+
+    assert r.status_code == 200
+    assert r.get_json()["price"] == 250
 
 
 # ---- Errores de la base ----------------------------------------------------
