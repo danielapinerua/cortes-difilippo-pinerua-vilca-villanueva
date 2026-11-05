@@ -1,8 +1,12 @@
 """Capa de negocio para solicitudes de servicios."""
 
+from flask import current_app
+
+from .. import db
 from ..constants import STATUS_COMPLETED, STATUS_PENDING, STATUS_REJECTED
 from ..errors import ConflictError, NotFoundError, ValidationError
 from ..repositories import administrators_repository, clients_repository, service_requests_repository
+from . import notifications_service
 
 MODIFICATION_TYPE_MAX = 100
 DESCRIPTION_MAX = 2000
@@ -66,8 +70,25 @@ def create_service_request(user_id, service_id, modification_type, description=N
     return row
 
 
+def _resolution_message(detail, decision, reason):
+    """Arma el texto de la notificación. El service lo trunca a 500."""
+    if decision == "approve":
+        return (
+            f"Tu solicitud #{detail['id']} ({detail['service_name']}) fue aprobada. "
+            f"Estado: {detail['status_name']}."
+        )
+    return (
+        f"Tu solicitud #{detail['id']} ({detail['service_name']}) fue rechazada. "
+        f"Motivo: {reason}"
+    )
+
+
 def attend_service_request(admin_user_id, request_id, decision, rejection_reason=None):
-    """Atiende una solicitud: aprueba (-> realizado) o rechaza (con motivo)."""
+    """Atiende una solicitud: aprueba (-> realizado) o rechaza (con motivo).
+
+    El UPDATE de la solicitud y el INSERT de la notificación son atómicos:
+    si falla la notificación, se revierte la resolución.
+    """
 
     # 1. Validar la decisión: solo "approve" o "reject".
     if decision not in ("approve", "reject"):
@@ -96,29 +117,50 @@ def attend_service_request(admin_user_id, request_id, decision, rejection_reason
     if request is None:
         raise NotFoundError("La solicitud no existe.")
 
-    # 5. Solo se atiende una solicitud en estado pendiente.
+    # 4. Solo se atiende una solicitud en estado pendiente.
     if request["status_id"] != STATUS_PENDING:
         raise ConflictError("La solicitud ya no está pendiente.")
 
-    # 6-7. Buscar el administrador que atiende.
+    # 5. Buscar el administrador que atiende.
     administrator = administrators_repository.get_by_user_id(admin_user_id)
     if administrator is None:
         raise NotFoundError("No existe el perfil de administrador.")
 
-    # 8. Definir el estado de salida.
+    # 6. Definir el estado de salida.
     status_id = STATUS_COMPLETED if decision == "approve" else STATUS_REJECTED
 
-    # 9. Actualizar la solicitud.
-    rows = service_requests_repository.update_resolution(
-        request_id, status_id, administrator["id"], reason
-    )
+    # 7. Resolver la solicitud y notificar en una sola transacción.
+    with db.transaction():
+        client = clients_repository.get_by_id(request["client_id"])
+        recipient_user_id = client["user_id"] if client else None
 
-    # 10. Si no se actualizó, la solicitud ya no estaba pendiente.
-    if rows == 0:
-        raise ConflictError("La solicitud ya no está pendiente.")
+        rows = service_requests_repository.update_resolution(
+            request_id, status_id, administrator["id"], reason
+        )
 
-    # 11. Devolver la solicitud actualizada.
-    return service_requests_repository.get_by_id(request_id)
+        # Si no se actualizó, la solicitud ya no estaba pendiente.
+        if rows == 0:
+            raise ConflictError("La solicitud ya no está pendiente.")
+
+        detail = service_requests_repository.get_detail(request_id)
+        if detail is None:
+            raise NotFoundError("La solicitud no existe.")
+
+        if recipient_user_id is None:
+            current_app.logger.warning(
+                "Solicitud %s resuelta sin notificación: "
+                "el cliente %s no tiene user_id.",
+                request_id,
+                request["client_id"],
+            )
+        else:
+            notifications_service.create_notification(
+                recipient_user_id,
+                _resolution_message(detail, decision, reason),
+            )
+
+    # 8. Devolver el detalle legible.
+    return detail
 
 
 

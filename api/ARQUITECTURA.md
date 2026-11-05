@@ -68,6 +68,7 @@ api/
 │   │   ├── clients_service.py
 │   │   ├── services_service.py
 │   │   ├── service_requests_service.py
+│   │   ├── notifications_service.py      Notificación interna (US09; base US11/US12)
 │   │   └── claims_service.py
 │   └── repositories/           CAPA DE DATOS (SQL)
 │       ├── users_repository.py
@@ -76,7 +77,8 @@ api/
 │       ├── plans_repository.py
 │       ├── claims_repository.py
 │       ├── services_repository.py
-│       └── service_requests_repository.py
+│       ├── service_requests_repository.py
+│       └── notifications_repository.py
 ├── scripts/
 │   └── create_user.py         Crea un admin o cliente de prueba (la tabla users arranca vacía)
 ├── pytest.ini                 Marca `e2e` y excluye `tests/e2e` de la corrida normal
@@ -91,10 +93,12 @@ api/
     ├── test_service_requests_create.py (US02)
     ├── test_service_requests_admin.py  (US09)
     ├── test_service_requests_list.py   (US14/US05)
+    ├── test_notifications.py           (módulo de notificaciones)
     └── e2e/                            (MySQL real)
         ├── conftest.py
         ├── test_plans_e2e.py           (US07)
-        └── test_service_requests_e2e.py (US02)
+        ├── test_service_requests_e2e.py (US02)
+        └── test_service_requests_resolution_e2e.py (US09)
 ```
 
 Convención de nombres: un recurso = tres archivos con el mismo nombre base (`clients.py`, `clients_service.py`, `clients_repository.py`).
@@ -199,7 +203,7 @@ Estado: ✅ hecho · 🔲 pendiente · ❓ requiere decisión (sección 8). Las 
 | US02 | Solicitar modificación de servicio | `POST /me/service-requests` · body `{service_id, modification_type, description?}` · el `client_id` sale del token | client | ✅ backend (tests unitarios + e2e) |
 | US14 | Consultar solicitudes y estados | `GET /service-requests?status_id=&priority_id=&client_id=` (bandeja) · `GET /service-requests/{id}` (detalle) · `GET /me/service-requests?status_id=` (las del cliente) | admin / client | ✅ backend (falta pantalla) |
 | US05 | Consultar estado de una solicitud | Sale del mismo `GET /me/service-requests` de US14: cada solicitud trae `status_id`, `status_name`, `resolved_at` y `rejection_reason` | client | ✅ backend (falta pantalla) |
-| US09 | Atender solicitud | `PUT /service-requests/{id}/resolution` · body `{decision: "approve"\|"reject", rejection_reason}` | admin | ✅ backend (falta pantalla) |
+| US09 | Atender solicitud | `PUT /service-requests/{id}/resolution` · body `{decision: "approve"\|"reject", rejection_reason}` | admin | ✅ backend (notificación interna; falta pantalla) |
 
 Reglas de US02 (solicitar modificación):
 - **Solo clientes.** Sin token → `401`; rol admin → `403`.
@@ -215,7 +219,29 @@ Reglas de US02 (solicitar modificación):
 - **Duplicados permitidos.** No hay regla que impida pedir dos veces el mismo cambio.
 - **Notificación al admin:** fuera de alcance (US11).
 
-Reglas de US09 para el Sprint 1 (según `base_datos.md` 5.1): solo se atiende una solicitud en estado `pendiente`; aprobar → `realizado` (5); rechazar → `rechazado` (4) y el motivo es obligatorio (422 si falta); se guardan `administrator_id` y `resolved_at`. Atender una que ya no está pendiente → 409.
+Reglas de US09 (Sprint 1):
+- **Solo administradores.** Sin token → `401`; rol `client` → `403`.
+- **Body:** `{decision: "approve" | "reject", rejection_reason?}`.
+- **Decisión inválida** → `422` con `details.decision`.
+- **Rechazo:** el motivo es obligatorio, texto, ≤ 500 caracteres → `422` si falta o se excede.
+- **Solo se atiende una solicitud pendiente** (`status_id = 1`). Si ya no está pendiente → `409`.
+- **Aprobar** → `status_id = 5` (`realizado`); **rechazar** → `status_id = 4` (`rechazado`).
+- Se guardan `administrator_id` y `resolved_at = NOW()`.
+- **Notificación interna:** al resolver, se inserta una fila en `notifications` para el `users.id` del cliente dueño de la solicitud. El mensaje se arma en `service_requests_service` y `notifications_service` lo valida y trunca a 500 caracteres.
+- **Cliente sin login** (`clients.user_id IS NULL`): la solicitud se resuelve igual, no se inserta notificación y se registra un `warning`.
+- **Atomicidad:** `UPDATE` + `INSERT` dentro de `db.transaction()`. Si falla la notificación, rollback: la solicitud no queda resuelta.
+- **Respuesta `200`:** detalle legible con `get_detail` (`client_name`, `service_name`, `status_name`, `priority_name`, `priority_level`, etc.).
+- **Prioridad:** US09 no modifica `priority_id`; eso es US10. La postcondición del CU3 se corrige para reflejarlo.
+- **Aprobado vs realizado:** aprobar lleva directo a `realizado` (5); el estado `aprobado` (3) no se usa en este flujo.
+
+### Notificaciones internas (US09; base para US11/US12)
+
+- `notifications_repository.create(user_id, message)` → `INSERT INTO notifications (user_id, message)`.
+- `notifications_service.create_notification(user_id, message)` → valida, trunca a 500 y delega en el repositorio.
+- No tiene endpoints propios en esta iteración.
+- No hace `commit`: participa de la transacción del caller.
+- No envía email/SMS: eso es US21/NotiSys.
+- `is_read` queda en `0` y `created_at` en `CURRENT_TIMESTAMP` por los defaults de la tabla.
 
 Reglas de US14 y US05:
 - **Cada solicitud trae datos legibles**, no solo ids: `client_name`, `service_name`, `status_name`, `priority_name` y `priority_level`, además de `modification_type`, `description`, `rejection_reason`, `created_at` y `resolved_at`. Se obtienen con un solo `SELECT` con `JOIN`.
@@ -376,3 +402,4 @@ g. **Verificación de email:** `users` no tiene columna para eso, así que la cu
 | 2026-11-03 | US07: el plan por defecto (Gratuito) queda protegido contra el borrado (`409 protected_resource`). Un plan normal se sigue borrando (`204`) y uno en uso devuelve `409 in_use`. Verificado contra MySQL real. Suite completa: 169 tests. |
 | 2026-11-03 | US07: el precio del plan por defecto queda congelado en 0 (`DEFAULT_PLAN_PRICE`). `PUT /plans/4` con otro precio devuelve `409 protected_resource`; `name` y `description` se siguen editando. Suite completa: 176 tests (+ 11 e2e). |
 | 2026-11-03 | US02: alta de solicitudes de modificación con validación de `service_id`, `modification_type` y `description`, estado inicial pendiente explícito y respuesta con datos legibles. Tests unitarios + e2e. Suite completa: 191 tests (+ 17 e2e). |
+| 2026-11-05 | US09: notificación interna al cliente al aprobar o rechazar, dentro de la misma transacción que la resolución. Respuesta con detalle legible (`get_detail`). Cliente sin login se resuelve sin notificar. Módulo `notifications_repository` / `notifications_service` reutilizable para US11/US12. Suite unitaria: 207 tests; e2e: 25. |

@@ -11,7 +11,12 @@ import pytest
 from app import create_app
 from app.config import TestConfig
 from app.constants import DEFAULT_PLAN_PRICE
-from app.repositories import clients_repository, plans_repository, users_repository
+from app.repositories import (
+    clients_repository,
+    notifications_repository,
+    plans_repository,
+    users_repository,
+)
 from app.security import hash_password
 
 PASSWORD = "Clave-de-prueba-1"
@@ -115,6 +120,10 @@ def fake_clients(monkeypatch):
         }
         return client_id
 
+    def get_by_id(client_id):
+        c = clients.get(client_id)
+        return dict(c) if c else None
+
     def get_by_email(email):
         return next((dict(c) for c in clients.values() if c["email"] == email), None)
 
@@ -124,14 +133,38 @@ def fake_clients(monkeypatch):
     def get_by_user_id(user_id):
         return next((dict(c) for c in clients.values() if c["user_id"] == user_id), None)
 
-    for name, fn in {"create": create, "get_by_email": get_by_email,
-                     "get_by_dni": get_by_dni, "get_by_user_id": get_by_user_id}.items():
+    for name, fn in {"create": create, "get_by_id": get_by_id,
+                     "get_by_email": get_by_email, "get_by_dni": get_by_dni,
+                     "get_by_user_id": get_by_user_id}.items():
         monkeypatch.setattr(clients_repository, name, fn)
     return clients
 
 
 @pytest.fixture
-def client(fake_plans, fake_users, fake_clients):
+def fake_notifications(monkeypatch):
+    """Reemplaza el INSERT real y permite inspeccionar lo notificado."""
+    sent = []
+    counter = {"next": 1}
+
+    def create(user_id, message):
+        notification_id = counter["next"]
+        counter["next"] += 1
+        sent.append(
+            {
+                "id": notification_id,
+                "user_id": user_id,
+                "message": message,
+                "is_read": 0,
+            }
+        )
+        return notification_id
+
+    monkeypatch.setattr(notifications_repository, "create", create)
+    return sent
+
+
+@pytest.fixture
+def client(fake_plans, fake_users, fake_clients, fake_notifications):
     return create_app(TestConfig).test_client()
 
 

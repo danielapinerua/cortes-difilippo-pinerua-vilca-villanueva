@@ -58,6 +58,8 @@ Como administrador autenticado, con al menos una solicitud pendiente, quiero rev
 
 Si rechazo la solicitud, el sistema debe pedirme el motivo del rechazo antes de registrarlo; en cualquiera de los dos casos, el sistema actualiza el estado de la solicitud y notifica al cliente el resultado.
 
+**Criterio backend:** al aprobar o rechazar, la solicitud se actualiza y se registra una notificación interna en `notifications` para el usuario del cliente. Ambas operaciones son atómicas. Si el cliente no tiene cuenta de login (`clients.user_id = NULL`), la solicitud se resuelve sin notificación.
+
 ### US10 - Asignar prioridad
 
 Como administrador autenticado, quiero asignar una prioridad a una solicitud según el plan contratado por el cliente, para que las solicitudes se atiendan respetando el nivel de servicio correspondiente.

@@ -79,6 +79,13 @@ def _cleanup(app):
                 "(SELECT id FROM users WHERE email LIKE %s)",
                 (PREFIX,),
             )
+            # notifications referencia users con CASCADE; se borra explícito
+            # para que la limpieza no dependa de la FK.
+            cur.execute(
+                "DELETE FROM notifications WHERE user_id IN "
+                "(SELECT id FROM users WHERE email LIKE %s)",
+                (PREFIX,),
+            )
             cur.execute("DELETE FROM users WHERE email LIKE %s", (PREFIX,))
             cur.execute(
                 "DELETE FROM plans WHERE name LIKE %s AND id <> %s",
@@ -165,4 +172,5 @@ def customer(http, app):
     return SimpleNamespace(
         headers={"Authorization": f"Bearer {r.get_json()['token']}"},
         client_id=client_id,
+        user_id=user_id,
     )

@@ -802,7 +802,7 @@ RF-20, RNF-07, US23.
 El aviso que ve el usuario en el campanito de la barra superior. Una fila por destinatario.
 
 **Quién la usa**
-RF-12, RF-13, US11, US12.
+RF-12, RF-13, US09, US11, US12.
 
 **Campos**
 
@@ -828,6 +828,12 @@ RF-12, RF-13, US11, US12.
 - Al abrir la bandeja se marcan **todas** como leídas: `UPDATE ... SET is_read = 1 WHERE user_id = ? AND is_read = 0`.
 - El contador del campanito es `COUNT(*) WHERE user_id = ? AND is_read = 0`.
 - Solo hay notificaciones **dentro de la app**. El envío por email/SMS se registra en `integration_audit_logs`.
+- **US09** inserta una fila al aprobar o rechazar una solicitud:
+  `INSERT INTO notifications (user_id, message) VALUES (?, ?)`.
+  El destinatario es el `users.id` del cliente dueño de la solicitud.
+- Si `clients.user_id` es `NULL` (cliente sin login), no se inserta la fila.
+- `message` es un resumen de hasta 500 caracteres; el motivo completo del rechazo
+  queda en `service_requests.rejection_reason`.
 
 **Ejemplo de fila**
 
@@ -953,16 +959,38 @@ ORDER BY p.level ASC, r.created_at ASC;
 ### Atender una solicitud (US09)
 
 ```sql
--- Aprobar
-UPDATE service_requests
-SET status_id = 5, administrator_id = ?, resolved_at = NOW()
-WHERE id = ?;
+-- Aprobar: actualizar la solicitud y notificar en una sola transacción
+START TRANSACTION;
 
+UPDATE service_requests
+SET status_id = 5,
+    administrator_id = ?,
+    resolved_at = NOW()
+WHERE id = ? AND status_id = 1;
+
+-- Solo si el UPDATE afectó una fila y el cliente tiene user_id:
+INSERT INTO notifications (user_id, message)
+VALUES (?, 'Tu solicitud #? fue aprobada. Estado: realizado.');
+
+COMMIT;
+```
+
+```sql
 -- Rechazar
 UPDATE service_requests
-SET status_id = 4, administrator_id = ?, rejection_reason = ?, resolved_at = NOW()
-WHERE id = ?;
+SET status_id = 4,
+    administrator_id = ?,
+    rejection_reason = ?,
+    resolved_at = NOW()
+WHERE id = ? AND status_id = 1;
+
+-- Solo si el UPDATE afectó una fila y el cliente tiene user_id:
+INSERT INTO notifications (user_id, message)
+VALUES (?, 'Tu solicitud #? fue rechazada. Motivo: ...');
 ```
+
+> Si el cliente no tiene `user_id`, se ejecuta solo el `UPDATE`. Si el `INSERT`
+> falla, se hace `ROLLBACK` y la solicitud no queda resuelta.
 
 ### Contador del campanito y bandeja (US11/US12)
 

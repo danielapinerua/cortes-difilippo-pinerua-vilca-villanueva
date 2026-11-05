@@ -77,7 +77,7 @@
   2. El administrador ingresa el motivo del rechazo.
   3. El sistema registra el motivo.
 
-**Postcondición:** La solicitud queda con su prioridad y estado actualizados.
+**Postcondición:** La solicitud queda con su estado actualizado (`realizado` o `rechazado`) y el cliente recibe una notificación interna con el resultado. La prioridad se asigna en US10, no en US09.
 
 ---
 
