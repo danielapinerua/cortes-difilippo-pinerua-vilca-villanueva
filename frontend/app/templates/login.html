@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Iniciar sesión{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-1">Iniciar sesión</h1>
+        <p class="text-body-secondary mb-4">Ingresá con tu cuenta de Tech Solutions.</p>
+
+        {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+
+        <form method="post" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {{ field('email', 'Email', {}, email, type='email', required=True, autocomplete='username') }}
+          {{ field('password', 'Contraseña', {}, '', type='password', required=True, autocomplete='current-password') }}
+          <button class="btn btn-primary w-100" type="submit">Entrar</button>
+        </form>
+        <p class="text-center small mt-3 mb-0">¿No tenés cuenta? <a href="{{ url_for('auth.register') }}">Registrate</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+:root { --brand: #1f3a5f; --brand-dark: #162b47; }
+body { background: #f4f6f9; }
+.app-navbar { background: var(--brand); }
+.app-footer { border-top: 1px solid #dde2e8; background: #fff; }
+.btn-primary { --bs-btn-bg: var(--brand); --bs-btn-border-color: var(--brand);
+  --bs-btn-hover-bg: var(--brand-dark); --bs-btn-hover-border-color: var(--brand-dark);
+  --bs-btn-active-bg: var(--brand-dark); --bs-btn-active-border-color: var(--brand-dark);
+  --bs-btn-disabled-bg: var(--brand); --bs-btn-disabled-border-color: var(--brand); }
+.btn-outline-primary { --bs-btn-color: var(--brand); --bs-btn-border-color: var(--brand);
+  --bs-btn-hover-bg: var(--brand); --bs-btn-hover-border-color: var(--brand);
+  --bs-btn-active-bg: var(--brand-dark); --bs-btn-active-border-color: var(--brand-dark); }
+a { color: var(--brand); }
+.card { border: 0; }
+.table > :not(caption) > * > * { padding: .75rem .9rem; }
+.table thead th { font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: #5b6673; white-space: nowrap; }
+.text-truncate-2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.description-text { white-space: pre-line; }   /* respeta los saltos de línea que escribió el cliente */
+.empty-state { color: #5b6673; }

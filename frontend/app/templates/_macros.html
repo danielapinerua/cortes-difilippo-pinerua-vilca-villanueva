@@ -1,0 +1,36 @@
+{# Piezas reutilizables. Se importan con:  {% from "_macros.html" import status_badge %} #}
+
+{% macro status_badge(id, name) -%}
+  {%- set label = {1:'Pendiente',2:'En revisión',3:'Aprobada',4:'Rechazada',5:'Realizada'}.get(id, name) -%}
+  <span class="badge text-bg-{{ C.STATUS_COLORS.get(id, 'secondary') }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro priority_badge(id, name) -%}
+  {%- if id -%}
+    <span class="badge text-bg-{{ C.PRIORITY_COLORS.get(id, 'secondary') }}">{{ name|capitalize }}</span>
+  {%- else -%}
+    <span class="text-body-secondary">Sin asignar</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{# Campo de texto con su etiqueta y su error (si el API devolvió uno para ese campo) #}
+{% macro field(name, label, errors, value='', type='text', required=False, maxlength=None, help=None, autocomplete=None) -%}
+  <div class="mb-3">
+    <label for="{{ name }}" class="form-label">{{ label }}{% if required %} <span class="text-danger" aria-hidden="true">*</span>{% endif %}</label>
+    <input type="{{ type }}" class="form-control{% if errors.get(name) %} is-invalid{% endif %}"
+           id="{{ name }}" name="{{ name }}" value="{{ value }}"
+           {% if required %}required{% endif %}
+           {% if maxlength %}maxlength="{{ maxlength }}"{% endif %}
+           {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
+           {% if errors.get(name) %}aria-describedby="{{ name }}-error"{% endif %}>
+    {% if errors.get(name) %}<div class="invalid-feedback" id="{{ name }}-error">{{ errors[name] }}</div>
+    {% elif help %}<div class="form-text">{{ help }}</div>{% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro empty_state(title, text) -%}
+  <div class="empty-state text-center py-5">
+    <p class="h5 mb-1">{{ title }}</p>
+    <p class="text-body-secondary mb-0">{{ text }}</p>
+  </div>
+{%- endmacro %}

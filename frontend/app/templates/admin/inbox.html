@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, priority_badge, empty_state %}
+{% block title %}Bandeja de solicitudes{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1">Bandeja de solicitudes</h1>
+<p class="text-body-secondary mb-3">Ordenadas por prioridad y antigüedad: lo más urgente arriba.</p>
+
+<form method="get" class="row g-2 align-items-end mb-3">
+  <div class="col-sm-4 col-md-3">
+    <label for="status_id" class="form-label small mb-1">Estado</label>
+    <select id="status_id" name="status_id" class="form-select form-select-sm">
+      <option value="">Todos</option>
+      {% for id, label in status_choices %}<option value="{{ id }}" {{ 'selected' if id == status_id }}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-sm-4 col-md-3">
+    <label for="priority_id" class="form-label small mb-1">Prioridad</label>
+    <select id="priority_id" name="priority_id" class="form-select form-select-sm">
+      <option value="">Todas</option>
+      {% for id, label in priority_choices %}<option value="{{ id }}" {{ 'selected' if id == priority_id }}>{{ label }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="col-auto d-flex gap-2">
+    <button class="btn btn-sm btn-primary" type="submit">Filtrar</button>
+    {% if status_id or priority_id %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.inbox') }}">Limpiar</a>{% endif %}
+  </div>
+</form>
+
+{% if items %}
+<div class="card shadow-sm"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr><th>#</th><th>Cliente</th><th>Servicio</th><th>Modificación</th><th>Prioridad</th><th>Estado</th><th>Pedida</th><th></th></tr></thead>
+    <tbody>
+    {% for r in items %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td>{{ r.client_name }}</td>
+        <td>{{ r.service_name }}</td>
+        <td>{{ r.modification_type }}</td>
+        <td>{{ priority_badge(r.priority_id, r.priority_name) }}</td>
+        <td>{{ status_badge(r.status_id, r.status_name) }}</td>
+        <td class="text-nowrap">{{ r.created_at|fecha }}</td>
+        <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.detail', request_id=r.id) }}">
+          {{ 'Atender' if r.status_id == C.STATUS_PENDING else 'Ver' }}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+<p class="small text-body-secondary mt-2">{{ items|length }} solicitud{{ '' if items|length == 1 else 'es' }}.</p>
+{% elif status_id or priority_id %}
+  {{ empty_state('Ninguna solicitud coincide con los filtros', 'Probá cambiarlos o limpiarlos.') }}
+{% else %}
+  {{ empty_state('No hay solicitudes', 'Cuando un cliente pida una modificación, va a aparecer acá.') }}
+{% endif %}
+{% endblock %}

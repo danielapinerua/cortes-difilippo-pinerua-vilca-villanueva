@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Crear cuenta{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-1">Crear cuenta</h1>
+        <p class="text-body-secondary mb-4">Los campos con <span class="text-danger">*</span> son obligatorios.</p>
+
+        {% if errors.get('_general') %}<div class="alert alert-danger" role="alert">{{ errors['_general'] }}</div>{% endif %}
+
+        <form method="post" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {{ field('name', 'Nombre completo', errors, values.get('name',''), required=True, maxlength=100, autocomplete='name') }}
+          {{ field('email', 'Email', errors, values.get('email',''), type='email', required=True, maxlength=150, autocomplete='email') }}
+          <div class="row">
+            <div class="col-sm-6">{{ field('phone', 'Teléfono', errors, values.get('phone',''), type='tel', autocomplete='tel') }}</div>
+            <div class="col-sm-6">{{ field('dni', 'DNI', errors, values.get('dni','')) }}</div>
+          </div>
+          {{ field('password', 'Contraseña', errors, '', type='password', required=True, autocomplete='new-password',
+                   help='Entre 8 y 128 caracteres, con letras y números.') }}
+          {{ field('password_confirm', 'Repetir contraseña', errors, '', type='password', required=True, autocomplete='new-password') }}
+          <button class="btn btn-primary w-100" type="submit">Crear cuenta</button>
+        </form>
+        <p class="text-center small mt-3 mb-0">¿Ya tenés cuenta? <a href="{{ url_for('auth.login') }}">Iniciá sesión</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

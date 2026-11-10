@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="text-center py-5">
+  <p class="display-4 fw-bold text-body-secondary mb-2">{{ status }}</p>
+  <h1 class="h3">{{ title }}</h1>
+  <p class="text-body-secondary">{{ message }}</p>
+  <a class="btn btn-primary" href="{{ url_for('main.index') }}">Volver al inicio</a>
+</div>
+{% endblock %}

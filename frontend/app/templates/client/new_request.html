@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Nueva solicitud{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <h1 class="h3 mb-1">Nueva solicitud de modificación</h1>
+    <p class="text-body-secondary mb-4">Contanos qué querés cambiar en uno de tus servicios.</p>
+
+    {% if errors.get('_general') %}<div class="alert alert-danger" role="alert">{{ errors['_general'] }}</div>{% endif %}
+
+    {% if not services %}
+      <div class="alert alert-info">Necesitás tener un servicio contratado para pedir una modificación.</div>
+    {% else %}
+    <form method="post" novalidate class="card shadow-sm"><div class="card-body p-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="mb-3">
+        <label for="service_id" class="form-label">Servicio <span class="text-danger" aria-hidden="true">*</span></label>
+        <select id="service_id" name="service_id" required class="form-select{% if errors.get('service_id') %} is-invalid{% endif %}">
+          <option value="">Elegí un servicio…</option>
+          {% for s in services %}
+            <option value="{{ s.id }}" {{ 'selected' if values.get('service_id')|string == s.id|string }}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+        {% if errors.get('service_id') %}<div class="invalid-feedback">{{ errors['service_id'] }}</div>{% endif %}
+      </div>
+
+      {{ field('modification_type', 'Tipo de modificación', errors, values.get('modification_type',''),
+               required=True, maxlength=C.MODIFICATION_TYPE_MAX, help='Ej.: Cambio de horario, Ampliación de alcance…') }}
+
+      <div class="mb-3">
+        <label for="description" class="form-label">Descripción</label>
+        <textarea id="description" name="description" rows="5" maxlength="{{ C.DESCRIPTION_MAX }}"
+                  class="form-control{% if errors.get('description') %} is-invalid{% endif %}">{{ values.get('description','') }}</textarea>
+        {% if errors.get('description') %}<div class="invalid-feedback">{{ errors['description'] }}</div>
+        {% else %}<div class="form-text">Opcional. Máximo {{ C.DESCRIPTION_MAX }} caracteres.</div>{% endif %}
+      </div>
+
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Enviar solicitud</button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('client.services') }}">Cancelar</a>
+      </div>
+    </div></form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

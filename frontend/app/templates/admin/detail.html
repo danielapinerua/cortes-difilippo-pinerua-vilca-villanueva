@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, priority_badge %}
+{% block title %}Solicitud #{{ item.id }}{% endblock %}
+{% block content %}
+<nav aria-label="breadcrumb"><ol class="breadcrumb">
+  <li class="breadcrumb-item"><a href="{{ url_for('admin.inbox') }}">Bandeja</a></li>
+  <li class="breadcrumb-item active" aria-current="page">Solicitud #{{ item.id }}</li>
+</ol></nav>
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card shadow-sm"><div class="card-body p-4">
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <h1 class="h4 mb-0">{{ item.modification_type }}</h1>
+        {{ status_badge(item.status_id, item.status_name) }}
+      </div>
+      <dl class="row mb-0">
+        <dt class="col-sm-4">Cliente</dt><dd class="col-sm-8">{{ item.client_name }}</dd>
+        <dt class="col-sm-4">Servicio</dt><dd class="col-sm-8">{{ item.service_name }}</dd>
+        <dt class="col-sm-4">Prioridad</dt><dd class="col-sm-8">{{ priority_badge(item.priority_id, item.priority_name) }}</dd>
+        <dt class="col-sm-4">Pedida</dt><dd class="col-sm-8">{{ item.created_at|fecha }}</dd>
+        <dt class="col-sm-4">Resuelta</dt><dd class="col-sm-8">{{ item.resolved_at|fecha }}</dd>
+        <dt class="col-sm-4">Descripción</dt>
+        <dd class="col-sm-8 description-text">{{ item.description or 'Sin descripción.' }}</dd>
+        {% if item.rejection_reason %}
+        <dt class="col-sm-4">Motivo del rechazo</dt><dd class="col-sm-8 text-danger">{{ item.rejection_reason }}</dd>
+        {% endif %}
+      </dl>
+    </div></div>
+  </div>
+
+  <div class="col-lg-5">
+    {% if item.status_id == C.STATUS_PENDING %}
+    <form method="post" action="{{ url_for('admin.resolve', request_id=item.id) }}" class="card shadow-sm" id="resolve-form" novalidate>
+      <div class="card-body p-4">
+        <h2 class="h5">Atender solicitud</h2>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if errors.get('_general') or errors.get('decision') %}
+          <div class="alert alert-danger" role="alert">{{ errors.get('decision') or errors.get('_general') }}</div>
+        {% endif %}
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="radio" name="decision" id="d-approve" value="approve" required>
+          <label class="form-check-label" for="d-approve">Aprobar</label>
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="radio" name="decision" id="d-reject" value="reject"
+                 {{ 'checked' if errors.get('rejection_reason') }}>
+          <label class="form-check-label" for="d-reject">Rechazar</label>
+        </div>
+
+        <div class="mb-3" id="reason-box" {% if not errors.get('rejection_reason') %}hidden{% endif %}>
+          <label for="rejection_reason" class="form-label">Motivo del rechazo <span class="text-danger" aria-hidden="true">*</span></label>
+          <textarea id="rejection_reason" name="rejection_reason" rows="3" maxlength="{{ C.REJECTION_REASON_MAX }}"
+                    class="form-control{% if errors.get('rejection_reason') %} is-invalid{% endif %}">{{ reason }}</textarea>
+          {% if errors.get('rejection_reason') %}<div class="invalid-feedback">{{ errors['rejection_reason'] }}</div>
+          {% else %}<div class="form-text">El cliente va a ver este texto. Máximo {{ C.REJECTION_REASON_MAX }} caracteres.</div>{% endif %}
+        </div>
+
+        <button class="btn btn-primary" type="submit" id="resolve-btn" disabled>Confirmar</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="alert alert-secondary mb-0">Esta solicitud ya fue resuelta y no se puede modificar.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/resolve.js') }}"></script>{% endblock %}

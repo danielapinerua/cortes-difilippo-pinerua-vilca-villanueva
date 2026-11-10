@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import empty_state %}
+{% block title %}Mis servicios{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1">Mis servicios</h1>
+<p class="text-body-secondary mb-4">Los servicios que tenés contratados. Desde acá podés pedir una modificación.</p>
+
+{% if services %}
+<div class="row g-3">
+  {% for s in services %}
+  <div class="col-md-6 col-lg-4">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body d-flex flex-column">
+        <h2 class="h5">{{ s.name }}</h2>
+        <p class="text-body-secondary flex-grow-1">{{ s.description or 'Sin descripción.' }}</p>
+        <p class="small text-body-secondary mb-3">Contratado el {{ s.contracted_at|fecha(False) }}</p>
+        <a class="btn btn-outline-primary btn-sm align-self-start" href="{{ url_for('client.new_request', service_id=s.id) }}">Solicitar modificación</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+  {{ empty_state('Todavía no tenés servicios contratados', 'Cuando contrates uno, va a aparecer acá.') }}
+{% endif %}
+{% endblock %}

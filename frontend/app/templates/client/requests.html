@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, empty_state %}
+{% block title %}Mis solicitudes{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+  <div>
+    <h1 class="h3 mb-1">Mis solicitudes</h1>
+    <p class="text-body-secondary mb-0">Seguí el estado de cada modificación que pediste.</p>
+  </div>
+  <form method="get" class="d-flex align-items-end gap-2">
+    <div>
+      <label for="status_id" class="form-label small mb-1">Estado</label>
+      <select id="status_id" name="status_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">Todos</option>
+        {% for id, label in status_choices %}<option value="{{ id }}" {{ 'selected' if id == status_id }}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <noscript><button class="btn btn-sm btn-outline-secondary" type="submit">Filtrar</button></noscript>
+  </form>
+</div>
+
+{% if items %}
+{# Celular: una tarjeta por solicitud (una tabla de 6 columnas no entra en la pantalla) #}
+<div class="vstack gap-3 d-md-none">
+  {% for r in items %}
+  <div class="card shadow-sm"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+      <div class="fw-semibold">#{{ r.id }} · {{ r.modification_type }}</div>
+      {{ status_badge(r.status_id, r.status_name) }}
+    </div>
+    <div class="text-body-secondary small mb-2">{{ r.service_name }}</div>
+    {% if r.description %}<p class="small mb-2 text-truncate-2">{{ r.description }}</p>{% endif %}
+    {% if r.status_id == C.STATUS_REJECTED and r.rejection_reason %}
+      <p class="small text-danger mb-2"><strong>Motivo del rechazo:</strong> {{ r.rejection_reason }}</p>
+    {% endif %}
+    <div class="small text-body-secondary">Pedida: {{ r.created_at|fecha }}{% if r.resolved_at %} · Resuelta: {{ r.resolved_at|fecha }}{% endif %}</div>
+  </div></div>
+  {% endfor %}
+</div>
+
+{# Pantallas medianas y grandes: tabla #}
+<div class="card shadow-sm d-none d-md-block"><div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead><tr><th>#</th><th>Servicio</th><th>Modificación</th><th>Estado</th><th>Pedida</th><th>Resuelta</th></tr></thead>
+    <tbody>
+    {% for r in items %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td>{{ r.service_name }}</td>
+        <td>
+          <div>{{ r.modification_type }}</div>
+          {% if r.description %}<div class="small text-body-secondary text-truncate-2">{{ r.description }}</div>{% endif %}
+          {% if r.status_id == C.STATUS_REJECTED and r.rejection_reason %}
+            <div class="small text-danger mt-1"><strong>Motivo del rechazo:</strong> {{ r.rejection_reason }}</div>
+          {% endif %}
+        </td>
+        <td>{{ status_badge(r.status_id, r.status_name) }}</td>
+        <td class="text-nowrap">{{ r.created_at|fecha }}</td>
+        <td class="text-nowrap">{{ r.resolved_at|fecha }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% elif status_id %}
+  {{ empty_state('No hay solicitudes con ese estado', 'Probá con otro filtro.') }}
+{% else %}
+  {{ empty_state('Todavía no pediste ninguna modificación', 'Cuando lo hagas, vas a poder seguirla desde acá.') }}
+  <div class="text-center"><a class="btn btn-primary" href="{{ url_for('client.new_request') }}">Nueva solicitud</a></div>
+{% endif %}
+{% endblock %}
